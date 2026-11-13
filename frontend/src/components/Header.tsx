@@ -8,7 +8,7 @@ export function Header(){
   return <header className="site-header">
     <Link to="/" className="brand" aria-label="VerifyMart home"><span className="brand-mark"><ShieldCheck size={21}/></span><span>VerifyMart <i>AI</i></span></Link>
     <nav className={`main-nav ${mobile?'is-open':''}`} aria-label="Main navigation">
-      {links.map(([label,path])=>path.startsWith('#')?<a key={label} href={path} onClick={()=>setMobile(false)}>{label}</a>:<NavLink key={label} to={path} onClick={()=>setMobile(false)}>{label}</NavLink>)}
+      {links.map(([label,path])=> (path ?? '').startsWith('#') ? <a key={label} href={path} onClick={()=>setMobile(false)}>{label}</a> : <NavLink key={label} to={path ?? '/'} onClick={()=>setMobile(false)}>{label}</NavLink>)}
     </nav>
     <div className="header-actions">
       <button className="icon-button cart-trigger" onClick={()=>setOpen(true)} aria-label={`Open cart, ${count} items`}><ShoppingBag size={18}/><span>Cart</span>{count>0&&<b>{count}</b>}</button>
