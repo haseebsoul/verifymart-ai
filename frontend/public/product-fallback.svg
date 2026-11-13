@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#9CAF88"/>
+  <rect x="235" y="130" width="330" height="340" rx="34" fill="#F7F5EF"/>
+  <path d="M315 300h170M400 215v170" stroke="#EB412C" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="400" cy="300" r="112" fill="none" stroke="#EB412C" stroke-width="8"/>
+  <text x="400" y="535" text-anchor="middle" font-family="sans-serif" font-size="23" fill="#EB412C">VERIFYMART</text>
+</svg>

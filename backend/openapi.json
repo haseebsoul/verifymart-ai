@@ -1,0 +1,963 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VerifyMart AI API",
+    "version": "1.0.0",
+    "description": "Authenticity, landed-cost and simulated escrow prototype API. Tariffs, provenance ledger and payment settlement are demo simulations."
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Catalog"
+    },
+    {
+      "name": "Verification"
+    },
+    {
+      "name": "Duty"
+    },
+    {
+      "name": "Orders"
+    },
+    {
+      "name": "Operations"
+    },
+    {
+      "name": "Administration"
+    },
+    {
+      "name": "Health"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness and service metrics",
+        "responses": {
+          "200": {
+            "description": "Service is alive"
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Database readiness",
+        "responses": {
+          "200": {
+            "description": "Ready"
+          },
+          "503": {
+            "description": "Database unavailable"
+          }
+        }
+      }
+    },
+    "/auth/mode": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Whether development demo credentials are enabled",
+        "responses": {
+          "200": {
+            "description": "Mode flags"
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Register a shopper",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created"
+          },
+          "409": {
+            "description": "Email already registered"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Sign in",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated with access token and refresh cookie"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          },
+          "423": {
+            "description": "Account locked"
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Rotate the HttpOnly refresh session",
+        "responses": {
+          "200": {
+            "description": "New access token and rotated cookie"
+          },
+          "401": {
+            "description": "Refresh cookie is missing or expired"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Revoke the current refresh session",
+        "responses": {
+          "204": {
+            "description": "Logged out"
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Current user",
+        "responses": {
+          "200": {
+            "description": "Public user"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/products": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List and filter catalog",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "verifiedOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "authenticity",
+                "price_asc",
+                "price_desc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Products and total count"
+          }
+        }
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Product detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product"
+          },
+          "404": {
+            "description": "Product not found"
+          }
+        }
+      }
+    },
+    "/verify/{query}": {
+      "get": {
+        "tags": [
+          "Verification"
+        ],
+        "summary": "Resolve SKU, batch hash, order ID or escrow receipt",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Certificate and chain of custody"
+          },
+          "404": {
+            "description": "Unknown verification query"
+          }
+        }
+      }
+    },
+    "/duty/calculate": {
+      "post": {
+        "tags": [
+          "Duty"
+        ],
+        "summary": "Calculate deterministic estimated landed cost",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DutyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Itemized estimate with tariff source and timestamp"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/orders/checkout": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create an order and held escrow state",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DutyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New order and escrow record"
+          },
+          "200": {
+            "description": "Original result returned on idempotency replay"
+          },
+          "409": {
+            "description": "Insufficient stock or idempotency conflict"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List own orders or all orders for staff",
+        "responses": {
+          "200": {
+            "description": "Order list"
+          }
+        }
+      }
+    },
+    "/orders/{id}/release": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Release held escrow (operator/admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Escrow released"
+          },
+          "403": {
+            "description": "Insufficient role"
+          }
+        }
+      }
+    },
+    "/orders/{id}/hold": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Place held escrow on hold with an audit reason",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Escrow placed on hold"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "KPIs and hub allocation",
+        "responses": {
+          "200": {
+            "description": "Metrics"
+          }
+        }
+      }
+    },
+    "/warehouses": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Hub topology and inventory allocation",
+        "responses": {
+          "200": {
+            "description": "Hubs and stock"
+          }
+        }
+      }
+    },
+    "/threats": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Open inventory/authenticity threats",
+        "responses": {
+          "200": {
+            "description": "Threats"
+          }
+        }
+      }
+    },
+    "/inventory/restock/{id}": {
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Restock a threat/product and resolve the threat",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inventory restocked"
+          }
+        }
+      }
+    },
+    "/inventory/{id}": {
+      "patch": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Edit stock or USD price",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inventory updated"
+          }
+        }
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read thresholds",
+        "responses": {
+          "200": {
+            "description": "Settings"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update thresholds",
+        "responses": {
+          "200": {
+            "description": "Settings saved"
+          }
+        }
+      }
+    },
+    "/simulation/trigger": {
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Trigger a simulated customs hold, counterfeit surge or re-balance",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Simulation accepted"
+          }
+        }
+      }
+    },
+    "/reports/audit.csv": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Export audit CSV",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV UTF-8 with BOM",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rewards": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Merchant trust score and points ledger",
+        "responses": {
+          "200": {
+            "description": "Rewards summary"
+          }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List accounts (admin only)",
+        "responses": {
+          "200": {
+            "description": "User directory"
+          }
+        }
+      }
+    },
+    "/admin/users/{id}": {
+      "patch": {
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Change a user's role (admin only)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated user role"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administration"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Delete user with typed email confirmation (admin only)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "User deleted; related order history and audit records are retained"
+          }
+        }
+      }
+    },
+    "/threats/{id}/resolve": {
+      "post": {
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Resolve an authenticity threat after a confidence-floor review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Threat reviewed and resolved"
+          },
+          "409": {
+            "description": "Product authenticity is below the configured confidence floor"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid access token"
+      },
+      "BadRequest": {
+        "description": "Validation failed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      },
+      "DutyRequest": {
+        "type": "object",
+        "required": [
+          "destinationCountry",
+          "items"
+        ],
+        "properties": {
+          "destinationCountry": {
+            "type": "string",
+            "enum": [
+              "US",
+              "UK",
+              "EU",
+              "AE",
+              "PK",
+              "SG"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "productId",
+                "quantity"
+              ],
+              "properties": {
+                "productId": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20
+                }
+              }
+            }
+          }
+        }
+      },
+      "SimulationRequest": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "customs_hold",
+              "counterfeit_surge",
+              "auto_rebalance"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

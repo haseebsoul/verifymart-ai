@@ -1,0 +1,27 @@
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+COPY package.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY frontend/package.json frontend/package.json
+COPY backend/package.json backend/package.json
+RUN npm install --no-audit --no-fund
+COPY packages/shared packages/shared
+COPY backend backend
+RUN npm run build --workspace @verifymart/shared && npm run build --workspace @verifymart/backend
+
+FROM node:20-bookworm-slim AS runtime
+ENV NODE_ENV=production PORT=8000 DATABASE_PATH=/app/data/verifymart.sqlite
+WORKDIR /app
+COPY package.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY frontend/package.json frontend/package.json
+COPY backend/package.json backend/package.json
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/* && npm install --omit=dev --no-audit --no-fund
+COPY --from=build /app/packages/shared/dist packages/shared/dist
+COPY --from=build /app/backend/dist backend/dist
+COPY backend/openapi.json backend/openapi.json
+RUN mkdir -p /app/data && chown -R node:node /app
+USER node
+EXPOSE 8000
+CMD ["node", "backend/dist/server.js"]
