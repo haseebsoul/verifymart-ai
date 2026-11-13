@@ -136,3 +136,17 @@ docs/                 SRE plan and requirement traceability
 ## License
 
 Prototype project. Add a project-specific license before external redistribution.
+
+
+## V14 MongoDB Atlas environment
+
+A development Atlas project and free M0 cluster have been provisioned for the V14 migration:
+
+- Project: `VerifyMart AI`
+- Cluster: `VerifyMartCluster` (AWS `AP_SOUTH_1`, Mumbai)
+- Database: `verifymart_v14`
+- Application database user: `verifymart_app` (read/write limited to this database)
+
+The provisioned database contains 31 collections, 76 indexes and 285 seed/demo documents. See [MongoDB Atlas provisioning](docs/MONGODB_ATLAS_PROVISIONING.md) for the resource record, collection inventory, seed counts and outstanding integration steps.
+
+**Migration status:** the currently checked-in backend source still uses SQLite. The Atlas infrastructure and seed data are ready, but the V14 implementation must complete the backend persistence migration to MongoDB Atlas before the running application can be described as Atlas-connected. The repository contains only placeholder values in `.env.example`; actual credentials must remain in a private local `.env` file and must never be committed.
