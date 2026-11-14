@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Long, MongoServerError, type ClientSession } from 'mongodb';
-import { getAtlasDb } from '../infrastructure/atlas.js';
+import { getAtlasClient, getAtlasDb } from '../infrastructure/atlas.js';
 import type { OrderDocument, ProductDocument } from './contracts.js';
 
 export interface CheckoutItemRequest {
@@ -80,7 +80,7 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
   const firstReplay = await replay();
   if (firstReplay) return firstReplay;
 
-  const session = database.client.startSession();
+  const session = getAtlasClient().startSession();
   const orderId = 'ord_' + randomUUID().replaceAll('-', '').slice(0, 18);
   const receiptId = input.holdReceiptId ?? ('esc_' + randomUUID().replaceAll('-', '').slice(0, 18));
   const now = new Date();
@@ -108,7 +108,7 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
 
         const decrement = await products.updateOne(
           { _id: item.productId, stock: { $gte: item.quantity } },
-          { $inc: { stock: -item.quantity }, $set: { updatedAt: now } },
+          { $inc: { stock: -item.quantity }, $set: { updatedAt: now, status: product.stock - item.quantity <= product.reorderThreshold ? 'low_stock' : product.status } },
           { session }
         );
         if (decrement.modifiedCount !== 1) {
