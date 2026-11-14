@@ -69,7 +69,7 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
   const products = database.collection<ProductDocument>('products');
 
   const replay = async (session?: ClientSession): Promise<MongoCheckoutResult | null> => {
-    const existing = await orders.findOne({ idempotencyKey: input.idempotencyKey }, { session });
+    const existing = await orders.findOne({ idempotencyKey: input.idempotencyKey }, session ? { session } : {});
     if (!existing) return null;
     if (existing.userId !== input.userId || existing.requestHash !== requestHash) {
       throw conflict('This idempotency key was already used for a different request.', 'IDEMPOTENCY_CONFLICT');
