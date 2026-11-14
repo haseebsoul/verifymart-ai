@@ -35,7 +35,8 @@ function fakeDb(user: UserFixture | null, merchant: MerchantFixture | null = nul
 
 function appFor(path: string, roles: Array<'shopper'|'merchant'|'inventory_manager'|'operator'|'admin'>) {
   const app = express();
-  app.get(path, authenticateAtlas, requireAtlasRoleAndOwnership(roles, { productIdParam: path.includes(':id') ? 'id' : undefined }), (req, res) => {
+  const ownershipOptions = path.includes(':id') ? { productIdParam: 'id' } : {};
+  app.get(path, authenticateAtlas, requireAtlasRoleAndOwnership(roles, ownershipOptions), (req, res) => {
     res.json({ id: req.atlasPrincipal?.id, role: req.atlasPrincipal?.role, merchantId: req.merchantId });
   });
   return app;
