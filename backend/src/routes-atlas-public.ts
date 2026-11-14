@@ -5,7 +5,6 @@ import { calculateAtlasDuty } from './services/duty-atlas.js';
 import { verifyAtlasQuery } from './services/verification-atlas.js';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { MongoProductRepository } from './repositories/products.js';
-import type { ProductDocument } from './repositories/contracts.js';
 
 export const atlasPublicRouter = Router();
 
