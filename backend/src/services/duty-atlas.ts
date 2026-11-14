@@ -1,6 +1,7 @@
 import { Long } from 'mongodb';
 import { getAtlasDb } from '../infrastructure/atlas.js';
-import type { ProductDocument, TariffRuleDocument } from '../repositories/contracts.js';
+import { MongoProductRepository } from '../repositories/products.js';
+import type { TariffRuleDocument } from '../repositories/contracts.js';
 
 export type AtlasDestination = 'US' | 'UK' | 'EU' | 'AE' | 'PK' | 'SG';
 export interface AtlasDutyItemInput { productId: string; quantity: number }
@@ -75,7 +76,7 @@ export async function calculateAtlasDuty(
   }
 
   const database = getAtlasDb();
-  const products = database.collection<ProductDocument>('products');
+  const products = new MongoProductRepository();
   const tariffRules = await database.collection<TariffRuleDocument>('tariffRules')
     .find({ country: destinationCountry }).sort({ hsPrefix: -1 }).toArray();
   if (!tariffRules.length) {
@@ -93,7 +94,7 @@ export async function calculateAtlasDuty(
   let totalCarrierCents = 0;
 
   for (const [productId, quantity] of [...aggregated.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const product = await products.findOne({ _id: productId, listingStatus: 'published' });
+    const product = await products.findPublicById(productId);
     if (!product) {
       throw Object.assign(new Error('Product ' + productId + ' was not found.'), { status: 404, code: 'PRODUCT_NOT_FOUND' });
     }
