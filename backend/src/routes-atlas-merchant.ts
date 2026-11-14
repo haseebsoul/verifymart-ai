@@ -187,7 +187,7 @@ const merchantListingUpdateSchema = z.object({
 atlasMerchantRouter.patch(
   '/merchant/listings/:id',
   authenticateAtlas,
-  requireAtlasRoleAndOwnership(['merchant']),
+  requireAtlasRoleAndOwnership(['merchant'], { productIdParam: 'id', allowPendingDraft: true, editableListingOnly: true }),
   asyncHandler(async (req, res) => {
     const merchantId = req.merchantId!;
     const productId = req.params.id;
@@ -255,7 +255,7 @@ atlasMerchantRouter.post('/merchant/resubmit', authenticateAtlas, requireAtlasRo
 atlasMerchantRouter.post(
   '/merchant/listings/:id/archive',
   authenticateAtlas,
-  requireAtlasRoleAndOwnership(['merchant']),
+  requireAtlasRoleAndOwnership(['merchant'], { productIdParam: 'id', allowPendingDraft: true, editableListingOnly: true }),
   asyncHandler(async (req, res) => {
     const merchantId = req.merchantId!;
     const productId = req.params.id;
