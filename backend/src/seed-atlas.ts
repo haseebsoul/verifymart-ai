@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Long, MongoClient } from 'mongodb';
-import { ensureAtlasIndexes } from './infrastructure/indexes.js';
+import { inspectExpectedAtlasIndexes } from './infrastructure/indexes.js';
 import type {
   HubDocument,
   MerchantDocument,
@@ -79,7 +79,12 @@ async function seed():Promise<void> {
     await client.connect();
     const database=client.db(dbName);
     await database.command({ping:1});
-    await ensureAtlasIndexes(database);
+    const existing = new Set(await database.listCollections({}, {nameOnly:true}).map(item=>item.name).toArray());
+    const required = ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger'];
+    const missing = required.filter(name=>!existing.has(name));
+    if (missing.length) throw new Error('Atlas collections are not provisioned: '+missing.join(', '));
+    const missingIndexes = await inspectExpectedAtlasIndexes(database);
+    if (missingIndexes.length) throw new Error('Provisioned Atlas indexes are missing: ' + missingIndexes.join(', '));
     const now=new Date();
 
     for(const hub of hubs) {
