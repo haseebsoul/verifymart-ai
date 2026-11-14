@@ -11,7 +11,7 @@ export class MongoProductRepository {
     const merchants = getAtlasDb().collection('merchants');
     const approvedMerchantIds = await merchants.distinct<string>('_id', { status: 'approved' });
     return this.products().find({
-      status: { $nin: ['draft', 'archived'] },
+      listingStatus: 'published',
       $or: [{ merchantId: null, managedBy: 'platform' }, { merchantId: { $in: approvedMerchantIds } }]
     }).sort({ category: 1, name: 1 }).toArray();
   }
