@@ -9,7 +9,7 @@ export const DESTINATION_NAMES: Record<(typeof DESTINATIONS)[number], string> = 
 };
 
 export const loginSchema = z.object({ email: z.string().email().max(254), password: z.string().min(8).max(128) });
-export const registerSchema = z.object({ name: z.string().trim().min(2).max(80), email: z.string().email().max(254), password: z.string().min(8).max(128) });
+export const registerSchema = z.object({ name: z.string().trim().min(2).max(80), email: z.string().email().max(254), password: z.string().min(10).max(128) });
 export const dutySchema = z.object({
   destinationCountry: z.enum(DESTINATIONS),
   items: z.array(z.object({ productId: z.string().min(1), quantity: z.number().int().min(1).max(20) })).min(1).max(50)
