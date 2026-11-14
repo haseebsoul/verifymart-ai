@@ -36,7 +36,7 @@ The 11 collections were created through the authorized Atlas management connecti
 - No application MONGODB_URI or secret-manager URI was available to this coding session. No database password was committed or written into repository files.
 - A separate least-privilege application principal for verifymart_dev and a separate audit principal with insert/find only on auditLog are still required. The existing DB user must not be broadened as a shortcut.
 - The Section 20.2 unique and query indexes were created and read back from Atlas: users.email (unique), users.role; merchants.userId (unique); products.sku and batchHash (unique), name+brand text, category, merchantId, status; hubs.code (unique); tariffRules (hsPrefix,country) (unique); orders.idempotencyKey (unique), userId, state, createdAt; threats severity, resolvedAt, productId; inventoryAdjustments productId, actorId, at; auditLog actorId, at; settings.key (unique); trustLedger merchantId, at. Additional products.listingStatus and products(merchantId,listingStatus) indexes support approved public catalog filtering. Runtime bootstrap code declares these indexes except auditLog indexes, which are managed by a separate deployment credential because the app credential must not administer immutable audit history.
-- The verifymart_dev database is not connected to the current application yet. The checked-in application still uses SQLite until the persistence cutover phase is complete.
+- The branch's normal development/runtime commands now select the Atlas-backed application. The code path is not yet live-verified because the separate application/audit credentials and host network allowlist are not provisioned. The legacy SQLite server is available only through explicitly named compatibility commands and refuses production startup.
 
 ## Required environment
 
@@ -52,3 +52,16 @@ The app principal must have only the required data privileges for application co
 ## Environment separation
 
 The SRS requires separate database names: verifymart_dev, verifymart_staging and verifymart_prod. Only the development database has been provisioned and partially configuration-seeded in this session. Staging/production require separate approved resources, secrets, network allowlists, backups and release gates.
+
+
+## Current implementation verification — 2026-11-14
+
+The branch `feat/atlas-five-role-migration` makes Atlas the default development/runtime path. The root README documents the setup and the legacy SQLite compatibility commands. The application startup validates the database name against `verifymart_dev`, `verifymart_staging`, or `verifymart_prod` and explicitly rejects `verifymart_v14`.
+
+A read-only Atlas check on 2026-11-14 inspected all 11 collections in `verifymart_dev`. The expected index names and key patterns in the branch's index registry were present, including the public listing and merchant/listing indexes. No collection/index creation or data mutation was done by that check.
+
+The normal branch CI run 43654588715 passed on commit `7c0c276e2ba2232bfb465da5f2568d2dd8745089`. This verifies install, type-check, build, configured unit tests, ESLint and color lint; it does **not** verify an application connection with the missing app/audit credentials or an actual application startup.
+
+At the time of the check, document counts remained: users 0, merchants 0, products 0, hubs 5, tariffRules 78, orders 0, threats 0, inventoryAdjustments 0, auditLog 0, trustLedger 0, settings 3. The seed utility was not run. No SQLite-to-Atlas migration was run.
+
+The backend test suite had 4 files/16 tests and 15.48% statement/line coverage (52.19% branch, 36.11% function) in that CI run. The 80% SRS core-service coverage gate, complete endpoint/RBAC suites, all five Playwright role journeys and axe accessibility acceptance remain open. The dev cluster is M0 and must not be used as evidence of production readiness.
