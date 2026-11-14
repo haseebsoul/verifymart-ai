@@ -1,10 +1,10 @@
-import type { ClientSession, Long } from 'mongodb';
+import type { ClientSession, Document, Long } from 'mongodb';
 
 export type Role = 'shopper' | 'merchant' | 'inventory_manager' | 'operator' | 'admin';
 export type OrderState = 'held' | 'released' | 'refunded' | 'on_hold';
 export type MerchantState = 'pending' | 'approved' | 'rejected';
 
-export interface UserDocument {
+export interface UserDocument extends Document {
   _id: string;
   name: string;
   email: string;
@@ -17,7 +17,7 @@ export interface UserDocument {
   refreshSessions: Array<{ tokenHash: string; expiresAt: Date; createdAt: Date }>;
 }
 
-export interface MerchantDocument {
+export interface MerchantDocument extends Document {
   _id: string;
   userId: string;
   businessName: string;
@@ -29,7 +29,7 @@ export interface MerchantDocument {
   updatedAt: Date;
 }
 
-export interface ProvenanceDocument {
+export interface ProvenanceDocument extends Document {
   id: string;
   stage: string;
   hubId: string;
@@ -37,7 +37,7 @@ export interface ProvenanceDocument {
   hash: string;
 }
 
-export interface ProductDocument {
+export interface ProductDocument extends Document {
   _id: string;
   sku: string;
   batchHash: string;
@@ -61,7 +61,7 @@ export interface ProductDocument {
   migratedFrom?: 'sqlite-v1';
 }
 
-export interface HubDocument {
+export interface HubDocument extends Document {
   _id: string;
   code: string;
   name: string;
@@ -72,7 +72,7 @@ export interface HubDocument {
   queueDepth: number;
 }
 
-export interface TariffRuleDocument {
+export interface TariffRuleDocument extends Document {
   _id: string;
   hsPrefix: string;
   country: 'US' | 'UK' | 'EU' | 'AE' | 'PK' | 'SG';
@@ -82,7 +82,7 @@ export interface TariffRuleDocument {
   source: 'seed-tariff-v1';
 }
 
-export interface OrderItemDocument {
+export interface OrderItemDocument extends Document {
   productId: string;
   sku: string;
   name: string;
@@ -90,7 +90,7 @@ export interface OrderItemDocument {
   unitPriceCents: Long;
 }
 
-export interface OrderDocument {
+export interface OrderDocument extends Document {
   _id: string;
   idempotencyKey: string;
   requestHash: string;
@@ -113,7 +113,7 @@ export interface OrderDocument {
   migratedFrom?: 'sqlite-v1';
 }
 
-export interface ThreatDocument {
+export interface ThreatDocument extends Document {
   _id: string;
   type: string;
   severity: 'CRITICAL' | 'WARN' | 'INFO';
@@ -122,7 +122,7 @@ export interface ThreatDocument {
   resolvedAt: Date | null;
 }
 
-export interface InventoryAdjustmentDocument {
+export interface InventoryAdjustmentDocument extends Document {
   _id: string;
   productId: string;
   actorId: string;
@@ -133,7 +133,7 @@ export interface InventoryAdjustmentDocument {
   migratedFrom?: 'sqlite-v1';
 }
 
-export interface AuditLogDocument {
+export interface AuditLogDocument extends Document {
   _id: string;
   actorId: string | null;
   action: string;
@@ -144,14 +144,14 @@ export interface AuditLogDocument {
   migratedFrom?: 'sqlite-v1';
 }
 
-export interface SettingDocument {
+export interface SettingDocument extends Document {
   _id: string;
   key: string;
   value: number | string | boolean;
   updatedAt: Date;
 }
 
-export interface TrustLedgerDocument {
+export interface TrustLedgerDocument extends Document {
   _id: string;
   merchantId: string;
   delta: number;
