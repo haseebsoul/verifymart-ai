@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { MongoServerError } from 'mongodb';
 import { z } from 'zod';
@@ -6,7 +7,7 @@ import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/at
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { MongoMerchantRepository } from './repositories/merchants.js';
-import type { MerchantDocument, UserDocument } from './repositories/contracts.js';
+import type { MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
 
 export const atlasAdminRouter = Router();
 const adminOnly = [authenticateAtlas, requireAtlasRoleAndOwnership(['admin'])];
@@ -18,6 +19,74 @@ atlasAdminRouter.get('/admin/users', ...adminOnly, asyncHandler(async (_req, res
     .limit(500)
     .toArray();
   res.json({ users: users.map(user => ({ id: user._id, name: user.name, email: user.email, role: user.role, lastLogin: user.lastLogin, createdAt: user.createdAt, disabledAt: user.disabledAt ?? null })) });
+}));
+
+
+atlasAdminRouter.get('/admin/merchants', ...adminOnly, asyncHandler(async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  if (status && !['pending','approved','rejected'].includes(status)) {
+    res.status(400).json({ error: { code: 'INVALID_MERCHANT_STATUS', message: 'Merchant status filter is invalid.', requestId: req.requestId } });
+    return;
+  }
+  const filter = status ? { status } : {};
+  const merchants = await getAtlasDb().collection<MerchantDocument>('merchants')
+    .find(filter).sort({ createdAt: -1 }).limit(500).toArray();
+  res.json({ merchants });
+}));
+
+atlasAdminRouter.get('/admin/products', ...adminOnly, asyncHandler(async (_req, res) => {
+  const products = await getAtlasDb().collection<ProductDocument>('products')
+    .find({ managedBy: 'merchant', merchantId: { $type: 'string' } })
+    .sort({ updatedAt: -1 }).limit(1000).toArray();
+  res.json({ products: products.map(product => ({
+    id: product._id, sku: product.sku, name: product.name, brand: product.brand,
+    listingStatus: product.listingStatus, merchantId: product.merchantId
+  })) });
+}));
+
+atlasAdminRouter.patch('/admin/products/:id/listing', ...adminOnly, asyncHandler(async (req, res) => {
+  const productId = req.params.id;
+  if (!productId) {
+    res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
+    return;
+  }
+  const input = z.object({
+    listingStatus: z.enum(['published','archived']),
+    reason: z.string().trim().min(4).max(500)
+  }).strict().parse(req.body);
+  const database = getAtlasDb();
+  const products = database.collection<ProductDocument>('products');
+  const product = await products.findOne({ _id: productId, managedBy: 'merchant', merchantId: { $type: 'string' } });
+  if (!product) {
+    res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Merchant listing was not found.', requestId: req.requestId } });
+    return;
+  }
+  if (input.listingStatus === 'published') {
+    const merchant = await database.collection<MerchantDocument>('merchants').findOne({ _id: product.merchantId, status: 'approved' });
+    const owner = merchant ? await database.collection<UserDocument>('users').findOne({
+      _id: merchant.userId, role: 'merchant',
+      $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+    }) : null;
+    if (!merchant || !owner) {
+      res.status(409).json({ error: { code: 'MERCHANT_NOT_ELIGIBLE', message: 'Only approved, active merchant accounts can publish listings.', requestId: req.requestId } });
+      return;
+    }
+  }
+  const changed = await products.updateOne(
+    { _id: productId, listingStatus: product.listingStatus, merchantId: product.merchantId },
+    { $set: { listingStatus: input.listingStatus, updatedAt: new Date() } }
+  );
+  if (changed.modifiedCount !== 1) {
+    res.status(409).json({ error: { code: 'LISTING_CONFLICT', message: 'Listing changed concurrently. Refresh and retry.', requestId: req.requestId } });
+    return;
+  }
+  await appendAuditEvent({
+    actorId: req.atlasPrincipal!.id,
+    action: input.listingStatus === 'published' ? 'MERCHANT_LISTING_PUBLISHED' : 'MERCHANT_LISTING_ARCHIVED',
+    targetType: 'product', targetId: productId,
+    details: { sku: product.sku, reason: input.reason, previousStatus: product.listingStatus, listingStatus: input.listingStatus }
+  });
+  res.json({ id: productId, listingStatus: input.listingStatus });
 }));
 
 atlasAdminRouter.patch('/admin/users/:id/role', ...adminOnly, asyncHandler(async (req, res) => {
