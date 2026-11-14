@@ -32,7 +32,7 @@ const carrierFeeCents: Record<AtlasDestination, number> = {
   US: 1500, UK: 1800, EU: 2000, AE: 1400, PK: 2800, SG: 1600
 };
 
-function roundRateHalfUp(valueCents: number, rateBps: number): number {
+export function roundRateHalfUp(valueCents: number, rateBps: number): number {
   if (!Number.isSafeInteger(valueCents) || !Number.isSafeInteger(rateBps) || valueCents < 0 || rateBps < 0) {
     throw new Error('Duty calculation requires non-negative integer cents and basis points.');
   }
