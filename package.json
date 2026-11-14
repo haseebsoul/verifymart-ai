@@ -4,7 +4,7 @@
   "private": true,
   "description": "Verified cross-border commerce prototype with landed-cost estimates, provenance verification and simulated escrow.",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "workspaces": [
     "packages/shared",
@@ -22,6 +22,7 @@
     "typecheck": "npm run typecheck --workspace @verifymart/shared && npm run typecheck --workspace backend && npm run typecheck --workspace frontend",
     "seed": "npm --workspace backend run seed",
     "start": "npm --workspace backend start",
+    "migrate:atlas": "npm --workspace backend run migrate:atlas",
     "format": "prettier --write ."
   },
   "devDependencies": {
