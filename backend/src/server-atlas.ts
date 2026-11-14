@@ -22,7 +22,9 @@ function send(socket: WebSocket, event: Record<string, unknown>): void {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
 }
 
-async function resolveSocketContext(protocolHeader: string | undefined) {
+type SocketContext = { userId?: string; role?: string; merchantId?: string };
+
+async function resolveSocketContext(protocolHeader: string | undefined): Promise<SocketContext> {
   const protocols = (protocolHeader ?? '').split(',').map(value => value.trim());
   const bearerProtocol = protocols.find(value => value.startsWith('bearer.'));
   if (!bearerProtocol) return {};
