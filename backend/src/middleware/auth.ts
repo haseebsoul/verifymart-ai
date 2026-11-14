@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import type { Role } from '@verifymart/shared';
 
 export interface AuthUser { id: string; name: string; email: string; role: Role }
@@ -10,7 +10,7 @@ const secret = (): string => {
   return configured ?? 'local-development-only-secret-change-me';
 };
 export function issueAccessToken(user: AuthUser): string {
-  return jwt.sign({ name: user.name, email: user.email, role: user.role }, secret(), { subject: user.id, expiresIn: process.env.JWT_ACCESS_TTL ?? '15m' });
+  return jwt.sign({ name: user.name, email: user.email, role: user.role }, secret(), { subject: user.id, expiresIn: (process.env.JWT_ACCESS_TTL ?? '15m') as SignOptions['expiresIn'] });
 }
 export function verifyAccessToken(token: string): AuthUser | null {
   try {
@@ -29,7 +29,10 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
   const header = req.header('authorization');
   const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
-  if (token) req.user = verifyAccessToken(token) ?? undefined;
+  if (token) {
+    const user = verifyAccessToken(token);
+    if (user) req.user = user;
+  }
   next();
 }
 export function requireRole(...roles: Role[]) {
