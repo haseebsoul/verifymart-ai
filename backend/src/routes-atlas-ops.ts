@@ -122,7 +122,7 @@ atlasOpsRouter.post(
     const database = getAtlasDb();
     const products = database.collection<ProductDocument>('products');
     const session = getAtlasClient().startSession();
-    let updated: ProductDocument | null = null;
+    const resultBox: { updated?: ProductDocument } = {};
     try {
       await session.withTransaction(async () => {
         const current = await products.findOne({ _id: productId }, { session });
@@ -133,8 +133,8 @@ atlasOpsRouter.post(
           { $inc: { stock: input.quantity }, $set: { updatedAt: now, status: current.status === 'low_stock' ? 'verified' : current.status } },
           { session, returnDocument: 'after' }
         );
-        updated = result ?? null;
-        if (!updated) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
+        resultBox.updated = result ?? undefined;
+        if (!resultBox.updated) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
         await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments').insertOne({
           _id: 'iad_' + randomUUID().replaceAll('-', '').slice(0, 18),
           productId, actorId: req.atlasPrincipal!.id, actorRole: req.atlasPrincipal!.role,
@@ -144,6 +144,7 @@ atlasOpsRouter.post(
     } finally {
       await session.endSession();
     }
+    const updated = resultBox.updated;
     if (!updated) throw new Error('Inventory transaction returned without an updated product.');
     await appendAuditEvent({
       actorId: req.atlasPrincipal!.id, action: 'INVENTORY_RESTOCKED', targetType: 'product',
@@ -167,7 +168,7 @@ atlasOpsRouter.patch(
     const database = getAtlasDb();
     const products = database.collection<ProductDocument>('products');
     const session = getAtlasClient().startSession();
-    let changed: ProductDocument | null = null;
+    const resultBox: { changed?: ProductDocument } = {};
     let delta = 0;
     try {
       await session.withTransaction(async () => {
@@ -185,8 +186,8 @@ atlasOpsRouter.patch(
           { $set: { stock: input.stock, updatedAt: now, status: input.stock <= current.reorderThreshold ? 'low_stock' : current.status === 'low_stock' ? 'verified' : current.status } },
           { session, returnDocument: 'after' }
         );
-        changed = result ?? null;
-        if (!changed) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
+        resultBox.changed = result ?? undefined;
+        if (!resultBox.changed) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
         if (delta !== 0) {
           await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments').insertOne({
             _id: 'iad_' + randomUUID().replaceAll('-', '').slice(0, 18),
@@ -198,6 +199,7 @@ atlasOpsRouter.patch(
     } finally {
       await session.endSession();
     }
+    const changed = resultBox.changed;
     if (!changed) throw new Error('Inventory update completed without a product.');
     res.json({ productId: id, sku: changed.sku, stock: changed.stock });
   })
