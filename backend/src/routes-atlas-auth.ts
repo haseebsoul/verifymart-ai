@@ -13,6 +13,11 @@ import type { UserDocument } from './repositories/contracts.js';
 import { MongoUserRepository } from './repositories/users.js';
 
 export const atlasAuthRouter = Router();
+
+atlasAuthRouter.get('/auth/mode', (_req, res) => {
+  const demoMode = process.env.NODE_ENV !== 'production' && Boolean(process.env.DEMO_PASSWORD);
+  res.json({ demoMode });
+});
 const cookieName = 'verifymart_refresh';
 const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
