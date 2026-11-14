@@ -11,6 +11,7 @@ import { authenticateAtlas } from './middleware/atlas-auth.js';
 import { asyncHandler } from './middleware/http.js';
 import type { UserDocument } from './repositories/contracts.js';
 import { MongoUserRepository } from './repositories/users.js';
+import { appendAuditEvent } from './repositories/audit.js';
 
 export const atlasAuthRouter = Router();
 
@@ -185,27 +186,19 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
     return;
   }
 
-  const nextToken = randomBytes(48).toString('base64url');
-  const now = new Date();
+  // Remove the one-time token first, then issue its replacement. This avoids
+  // overlapping $pull/$push modifiers on the same MongoDB array path.
   const rotated = await users.updateOne(
     { _id: user._id, 'refreshSessions.tokenHash': tokenHash, $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }] },
-    ({
-      $pull: { refreshSessions: { tokenHash } },
-      $push: {
-        refreshSessions: {
-          tokenHash: hashToken(nextToken),
-          createdAt: now,
-          expiresAt: new Date(now.getTime() + sevenDaysMs)
-        }
-      }
-    } as unknown as UpdateFilter<UserDocument>));
+    { $pull: { refreshSessions: { tokenHash } } } as unknown as UpdateFilter<UserDocument>
+  );
   if (rotated.modifiedCount !== 1) {
     res.clearCookie(cookieName, cookieOptions());
     res.status(401).json({ error: { code: 'REFRESH_REPLAYED', message: 'Refresh token was already rotated. Sign in again.', requestId: req.requestId } });
     return;
   }
 
-  res.cookie(cookieName, nextToken, cookieOptions());
+  await newRefreshSession(user._id, res, users);
   res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
 }));
 
@@ -228,4 +221,83 @@ atlasAuthRouter.get('/auth/me', authenticateAtlas, asyncHandler(async (req, res)
     return;
   }
   res.json({ user: safeUser(user) });
+}));
+
+const updateProfileSchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  email: z.string().trim().email().max(254).optional()
+}).strict().refine(value => Object.keys(value).length > 0, 'Provide a name or email update.');
+
+atlasAuthRouter.patch('/auth/me', authenticateAtlas, asyncHandler(async (req, res) => {
+  const input = updateProfileSchema.parse(req.body);
+  const userId = req.atlasPrincipal!.id;
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const changes: Record<string, unknown> = {};
+  if (input.name !== undefined) changes.name = input.name;
+  if (input.email !== undefined) changes.email = input.email.toLowerCase();
+
+  try {
+    await users.updateOne({ _id: userId }, { $set: changes });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ error: { code: 'EMAIL_IN_USE', message: 'An account with this email already exists.', requestId: req.requestId } });
+      return;
+    }
+    throw error;
+  }
+
+  const updated = await users.findOne({ _id: userId });
+  if (!updated || updated.disabledAt) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'The account is no longer available.', requestId: req.requestId } });
+    return;
+  }
+  await appendAuditEvent({
+    actorId: userId,
+    action: 'ACCOUNT_PROFILE_UPDATED',
+    targetType: 'user',
+    targetId: userId,
+    details: { changedFields: Object.keys(changes) }
+  });
+  res.json({ user: safeUser(updated) });
+}));
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(10).max(128)
+}).strict();
+
+atlasAuthRouter.post('/auth/password', authenticateAtlas, asyncHandler(async (req, res) => {
+  const input = passwordChangeSchema.parse(req.body);
+  const userId = req.atlasPrincipal!.id;
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const user = await users.findOne({ _id: userId });
+  if (!user || user.disabledAt) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'The account is no longer available.', requestId: req.requestId } });
+    return;
+  }
+  if (!(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+    res.status(400).json({ error: { code: 'CURRENT_PASSWORD_INVALID', message: 'The current password is incorrect.', requestId: req.requestId } });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(input.newPassword, 12);
+  const changed = await users.updateOne(
+    { _id: userId, passwordHash, disabledAt: { $in: [null, undefined] } },
+    { $set: { passwordHash, refreshSessions: [] } }
+  );
+  // Hashes are deliberately not included in any audit or response payload.
+  if (changed.modifiedCount !== 1) {
+    res.status(409).json({ error: { code: 'PASSWORD_CHANGE_CONFLICT', message: 'The account changed during this request. Retry after signing in again.', requestId: req.requestId } });
+    return;
+  }
+
+  await newRefreshSession(userId, res, users);
+  await appendAuditEvent({
+    actorId: userId,
+    action: 'ACCOUNT_PASSWORD_CHANGED',
+    targetType: 'user',
+    targetId: userId,
+    details: { otherSessionsRevoked: true }
+  });
+  res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
 }));
