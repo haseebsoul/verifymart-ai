@@ -52,12 +52,12 @@ export class MongoMerchantRepository {
     const session = getAtlasClient().startSession();
     let merchant: MerchantDocument | null = null;
     try {
-      await session.withTransaction(async () => {
+      merchant = await session.withTransaction(async (): Promise<MerchantDocument | null> => {
         const pending = await this.merchants().findOne(
           { _id: merchantId, status: 'pending' },
           { session }
         );
-        if (!pending) return;
+        if (!pending) return null;
 
         const owner = await database.collection<UserDocument>('users').findOne({
           _id: pending.userId,
@@ -71,7 +71,7 @@ export class MongoMerchantRepository {
           });
         }
 
-        merchant = await this.merchants().findOneAndUpdate(
+        const decided = await this.merchants().findOneAndUpdate(
           { _id: merchantId, status: 'pending' },
           {
             $set: {
@@ -82,7 +82,7 @@ export class MongoMerchantRepository {
           },
           { session, returnDocument: 'after' }
         );
-        if (!merchant) {
+        if (!decided) {
           throw Object.assign(new Error('The merchant application changed concurrently.'), {
             status: 409,
             code: 'MERCHANT_DECISION_CONFLICT'
@@ -94,6 +94,7 @@ export class MongoMerchantRepository {
           { $set: { listingStatus: decision === 'approved' ? 'published' : 'archived', updatedAt: now } },
           { session }
         );
+        return decided;
       });
     } finally {
       await session.endSession();
