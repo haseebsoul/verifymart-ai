@@ -9,6 +9,7 @@ import { appendAuditEvent, readAuditEvents } from './repositories/audit.js';
 import type {
   HubDocument,
   InventoryAdjustmentDocument,
+  MerchantDocument,
   ProductDocument,
   SettingDocument,
   ThreatDocument,
@@ -385,7 +386,7 @@ atlasOpsRouter.get(
     let merchantName: string | null = null;
 
     if (merchantId) {
-      const merchant = await database.collection('merchants').findOne({ _id: merchantId });
+      const merchant = await database.collection<MerchantDocument>('merchants').findOne({ _id: merchantId });
       trustScore = typeof merchant?.trustScore === 'number' ? merchant.trustScore : null;
       merchantName = typeof merchant?.businessName === 'string' ? merchant.businessName : null;
     }
