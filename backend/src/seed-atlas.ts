@@ -104,7 +104,6 @@ async function seed():Promise<void> {
             hubId:step===0?String(hub):(stageHubs[step] ?? 'HUB-SIN'),
             occurredAt,
             hash:createHash('sha256').update(batchHash+':'+stage+':'+String(hub)+':'+occurredAt.toISOString()).digest('hex'),
-            simulated:true,
             simulated:true
           };
         });
