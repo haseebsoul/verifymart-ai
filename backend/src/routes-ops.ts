@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DESTINATIONS, roleSchema, restockSchema, inventoryPatchSchema, settingSchema, simulationSchema, threatResolveSchema } from '@verifymart/shared';
 import { db, dollars, audit, cryptoId, nowIso } from './db.js';
 import { authenticate, requireRole } from './middleware/auth.js';
-import { asyncHandler, parseBody } from './middleware/http.js';
+import { parseBody } from './middleware/http.js';
 import { publishEvent } from './telemetry.js';
 
 export const opsRouter = Router();
