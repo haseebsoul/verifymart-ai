@@ -141,46 +141,62 @@ Built to make product trust more transparent.
 </div>
 
 
-## Atlas five-role runtime (feature branch)
+## MongoDB Atlas five-role runtime
 
-The current `main` runtime remains the legacy SQLite implementation. The five-role/Atlas implementation is being developed on `feat/atlas-five-role-migration`; it is **not a production cutover** and should not be deployed as production yet.
+The default application runtime on this branch is MongoDB Atlas with the five SRS roles: shopper, merchant, inventory manager, operator and admin. SQLite is retained only as an explicitly named legacy compatibility path for migration analysis; the legacy SQLite server refuses to start with `NODE_ENV=production`.
 
 ### Development prerequisites
 
-- Node.js 20.19+ (CI uses Node 20.20.x).
-- A separate Atlas database named `verifymart_dev`.
-- A runtime database principal for the application collections, excluding `auditLog`.
-- A separate audit principal limited to `find` and `insert` on `auditLog` only.
-- Atlas network access restricted to the actual development machine/server outbound IP.
-- Local environment values configured outside Git.
+- Node.js 20.19+ and npm.
+- A dedicated Atlas development database named `verifymart_dev`, provisioned with the 11 Section 20 collections and expected indexes.
+- An application database principal scoped to application collections only; it must not write to `auditLog`.
+- A separate audit principal with only `find` and `insert` on `auditLog`.
+- Atlas network access restricted to the development machine's actual outbound IP.
+- A random `JWT_ACCESS_SECRET` of at least 32 characters.
 
-Copy `.env.example` to a local backend env file (never commit it), then configure at least:
+Copy `.env.example` to a local, untracked environment file and supply values there. Never paste credentials into chat, commit them, or put them in shell history. Required runtime values:
 
 ```dotenv
+NODE_ENV=development
+PORT=8000
 MONGODB_URI=mongodb+srv://<APP_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Dev
+MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit
 MONGODB_DB_NAME=verifymart_dev
 MONGODB_APP_NAME=VerifyMart-Dev
-MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit
 JWT_ACCESS_SECRET=<RANDOM_SECRET_AT_LEAST_32_CHARACTERS>
 CORS_ORIGIN=http://localhost:5173
+VITE_API_URL=http://localhost:8000/api
 ```
 
-The application principal should have the minimum CRUD permissions on its application collections and no write privileges on `auditLog`. The audit principal must be granted only `find` and `insert` on `auditLog`; it must not have update/remove. Create collections and indexes with a separate deployment/admin principal before runtime startup. Do not grant broad `readWrite` on the entire database to both users.
-
-### Atlas commands
+The normal commands use Atlas:
 
 ```powershell
 npm install
-npm run seed:atlas
-npm run dev:atlas
+npm run dev
+npm run build
+npm test
 ```
 
-`seed:atlas` is restricted to `verifymart_dev` or `verifymart_staging`, refuses production and requires all collections/indexes to be provisioned first. Demo accounts are created only when a local `DEMO_PASSWORD` of at least 10 characters is supplied. No demo password is checked into the repository.
+The backend listens on port 8000, Vite on port 5173. `npm start` runs the Atlas server. `npm run seed` is the Atlas development seed. The frontend proxies `/api` and `/ws` to the Atlas backend.
 
-The Atlas server listens on port 8000 by default; the Vite frontend remains on port 5173. `/api/ready` checks Atlas connectivity and the required application indexes. `/api/health` is process liveness only.
+Legacy SQLite commands are explicitly separated as `npm run dev:sqlite`, `npm run start:sqlite` and `npm run seed:sqlite`. They are compatibility/migration tooling, not the normal application path and must not be used in production.
+
+### Atlas provisioning and seed
+
+Create all collections and indexes with a separate deployment/admin principal before runtime startup. The app runtime validates that collections and indexes exist; it does not try to create database objects with its restricted application credential. The audit principal must be append-only at the database permission layer. The server startup validates the app connection, the audit connection, the JWT secret and required app indexes; `/api/health` is liveness, while `/api/ready` checks both database principals and index readiness.
+
+`npm run seed` is limited to `verifymart_dev` and `verifymart_staging`, refuses production and is idempotent for the demo catalogue, hubs, tariffs, settings and optional demo fixtures. It fills missing deterministic catalogue rows without overwriting existing products. Demo accounts are created only when `DEMO_PASSWORD` is explicitly configured (10+ characters); no demo password is checked in.
 
 ### Migration safety
 
-`npm run migrate:atlas -- --apply` is **not** a casual setup command. First run it without `--apply` for a read-only dry run. It requires a local read-only SQLite source plus one-time migration and audit-insert credentials. The script only permits `verifymart_dev` and `verifymart_staging`; production cutover is a separate approved operation. Preserve the SQLite source until staging row counts, transaction behavior and end-to-end acceptance all reconcile.
+`npm run migrate:atlas` defaults to a read-only dry run and requires the original SQLite source file, a development/staging migration principal and the separate audit migration principal when audit records exist. Use `DATABASE_PATH` only to point the tool to the local source file. The target is restricted to `verifymart_dev` or `verifymart_staging`. Before `--apply`, the script checks for target ID collisions and aborts rather than replacing records; malformed source JSON also aborts rather than being silently discarded. Review the per-collection count report and rejected-record output before any apply operation.
 
-Escrow, seeded tariff rules, provenance events and telemetry remain clearly simulated. There are no live payment, customs, manufacturer-ledger or attack-detection integrations.
+Do not use the existing legacy Atlas database `verifymart_v14` as the target. It is not an application migration target and must remain untouched. No migration should be performed until the SQLite source, clean staging target, credentials, network access and reconciliation plan have been independently reviewed.
+
+### Simulation boundaries
+
+- Seeded authenticity hashes are application-generated records, not manufacturer signatures or a live provenance ledger.
+- Tariff rates are seeded estimates, not official customs quotations or live customs feeds.
+- Escrow/order state is simulated; no payment or funds transfer occurs.
+- Telemetry and threat signals are simulated; there is no live network attack or threat-intelligence source.
+- SRE targets are not measured service-level results until monitoring data exists.
