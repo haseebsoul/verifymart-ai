@@ -6,7 +6,7 @@ const location = process.env.DATABASE_PATH ?? (process.env.VITEST ? ':memory:' :
 const databasePath = location === ':memory:' ? location : resolve(process.cwd(), location);
 if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
 
-export const db = new Database(databasePath);
+export const db: Database.Database = new Database(databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
