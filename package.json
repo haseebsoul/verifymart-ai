@@ -12,7 +12,7 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev": "concurrently -k \"npm:dev:backend:atlas\" \"npm:dev:frontend\"",
     "dev:atlas": "concurrently -k \"npm:dev:backend:atlas\" \"npm:dev:frontend\"",
     "dev:backend:atlas": "npm --workspace backend run dev:atlas",
     "dev:backend": "npm --workspace backend run dev",
@@ -22,12 +22,15 @@
     "lint": "npm run lint --workspace backend && npm run lint --workspace frontend",
     "lint:colors": "node scripts/lint-colors.mjs",
     "typecheck": "npm run build --workspace @verifymart/shared && npm run typecheck --workspace backend && npm run typecheck --workspace frontend",
-    "seed": "npm --workspace backend run seed",
+    "seed": "npm run seed:atlas",
     "seed:atlas": "npm --workspace backend run seed:atlas",
-    "start": "npm --workspace backend start",
+    "start": "npm --workspace backend run start:atlas",
     "start:atlas": "npm --workspace backend run start:atlas",
     "migrate:atlas": "npm --workspace backend run migrate:atlas",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "dev:sqlite": "concurrently -k \"npm:dev:backend:sqlite\" \"npm:dev:frontend\"",
+    "dev:backend:sqlite": "npm --workspace backend run dev:sqlite",
+    "start:sqlite": "npm --workspace backend run start:sqlite"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
