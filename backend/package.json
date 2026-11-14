@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:atlas": "tsx watch src/server-atlas.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "start:atlas": "node dist/server-atlas.js",
     "seed": "tsx src/seed.ts",
     "seed:atlas": "tsx src/seed-atlas.ts",
     "migrate:atlas": "tsx src/migrations/sqlite-to-atlas.ts",
