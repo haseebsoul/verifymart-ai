@@ -63,7 +63,7 @@ export const authenticateAtlas: RequestHandler = async (req: Request, res: Respo
 
   try {
     const user = await getAtlasDb().collection<UserDocument>('users').findOne({ _id: subject });
-    if (!user) {
+    if (!user || user.disabledAt) {
       sendAuthError(res, 401, 'UNAUTHORIZED', 'The account is no longer available.');
       return;
     }
