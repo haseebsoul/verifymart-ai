@@ -38,12 +38,12 @@ opsRouter.post('/inventory/restock/:id', ...operator, (req,res) => {
   const product = db.prepare('SELECT id,sku,stock,reorder_threshold FROM products WHERE id=?').get(productId) as {id:string;sku:string;stock:number;reorder_threshold:number} | undefined;
   if (!product) { res.status(404).json({error:{code:'INVENTORY_NOT_FOUND',message:'Threat or product was not found.',requestId:req.requestId}}); return; }
   const transaction = db.transaction(() => {
-    db.prepare("UPDATE products SET stock=stock+?,status=CASE WHEN EXISTS (SELECT 1 FROM threats WHERE product_id=? AND resolved_at IS NULL AND type!='Low stock') THEN 'audit_flag' WHEN ?=1 AND stock+? > reorder_threshold THEN 'verified' WHEN stock+? <= reorder_threshold THEN 'low_stock' ELSE status END WHERE id=?").run(body.quantity,product.id,threat?.type === 'Low stock' ? 1 : 0,body.quantity,body.quantity,product.id);
+    db.prepare("UPDATE products SET stock=stock+?,status=CASE WHEN EXISTS (SELECT 1 FROM threats WHERE product_id=? AND resolved_at IS NULL AND type!='Low stock') THEN 'audit_flag' WHEN ?=1 AND stock+? > reorder_threshold THEN 'verified' WHEN stock+? <= reorder_threshold THEN 'low_stock' ELSE status END WHERE id=?").run(quantity,product.id,threat?.type === 'Low stock' ? 1 : 0,quantity,quantity,product.id);
     if (threat) db.prepare('UPDATE threats SET resolved_at=? WHERE id=?').run(nowIso(),threat.id);
-    audit(req.user!.id,'INVENTORY_RESTOCKED','product',product.id,{quantity:body.quantity,threatId:threat?.id ?? null});
+    audit(req.user!.id,'INVENTORY_RESTOCKED','product',product.id,{quantity:quantity,threatId:threat?.id ?? null});
   });
   transaction(); publishEvent('THREAT_RESOLVED',{threatId:threat?.id ?? null,sku:product.sku});
-  res.json({productId:product.id,sku:product.sku,added:body.quantity,stock:product.stock+body.quantity,resolvedThreatId:threat?.id ?? null});
+  res.json({productId:product.id,sku:product.sku,added:quantity,stock:product.stock+quantity,resolvedThreatId:threat?.id ?? null});
 });
 opsRouter.post('/threats/:id/resolve', ...operator, (req,res) => {
   const {reason} = parseBody(threatResolveSchema, req.body);
