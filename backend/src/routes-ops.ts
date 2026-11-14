@@ -32,6 +32,7 @@ opsRouter.get('/threats', ...operator, (_req,res) => {
 });
 opsRouter.post('/inventory/restock/:id', ...operator, (req,res) => {
   const body = parseBody(restockSchema, req.body ?? {});
+  const quantity = body.quantity ?? 1;
   const threat = db.prepare('SELECT id,product_id,type FROM threats WHERE id=? AND resolved_at IS NULL').get(req.params.id) as {id:string;product_id:string;type:string} | undefined;
   const productId = threat?.product_id ?? req.params.id;
   const product = db.prepare('SELECT id,sku,stock,reorder_threshold FROM products WHERE id=?').get(productId) as {id:string;sku:string;stock:number;reorder_threshold:number} | undefined;
