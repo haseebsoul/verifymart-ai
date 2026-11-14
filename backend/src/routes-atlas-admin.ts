@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import { MongoServerError } from 'mongodb';
+import { MongoServerError, type Filter } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
@@ -23,12 +23,12 @@ atlasAdminRouter.get('/admin/users', ...adminOnly, asyncHandler(async (_req, res
 
 
 atlasAdminRouter.get('/admin/merchants', ...adminOnly, asyncHandler(async (req, res) => {
-  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-  if (status && !['pending','approved','rejected'].includes(status)) {
+  const status = z.enum(['pending','approved','rejected']).optional().safeParse(req.query.status);
+  if (!status.success) {
     res.status(400).json({ error: { code: 'INVALID_MERCHANT_STATUS', message: 'Merchant status filter is invalid.', requestId: req.requestId } });
     return;
   }
-  const filter = status ? { status } : {};
+  const filter: Filter<MerchantDocument> = status.data ? { status: status.data } : {};
   const merchants = await getAtlasDb().collection<MerchantDocument>('merchants')
     .find(filter).sort({ createdAt: -1 }).limit(500).toArray();
   res.json({ merchants });
@@ -62,6 +62,10 @@ atlasAdminRouter.patch('/admin/products/:id/listing', ...adminOnly, asyncHandler
     return;
   }
   if (input.listingStatus === 'published') {
+    if (!product.merchantId) {
+      res.status(409).json({ error: { code: 'MERCHANT_NOT_ELIGIBLE', message: 'A merchant-owned listing is required.', requestId: req.requestId } });
+      return;
+    }
     const merchant = await database.collection<MerchantDocument>('merchants').findOne({ _id: product.merchantId, status: 'approved' });
     const owner = merchant ? await database.collection<UserDocument>('users').findOne({
       _id: merchant.userId, role: 'merchant',
