@@ -282,7 +282,7 @@ atlasAuthRouter.post('/auth/password', authenticateAtlas, asyncHandler(async (re
 
   const passwordHash = await bcrypt.hash(input.newPassword, 12);
   const changed = await users.updateOne(
-    { _id: userId, passwordHash, disabledAt: { $in: [null, undefined] } },
+    { _id: userId, passwordHash: user.passwordHash, $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }] },
     { $set: { passwordHash, refreshSessions: [] } }
   );
   // Hashes are deliberately not included in any audit or response payload.
