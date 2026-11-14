@@ -6,7 +6,7 @@ import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/at
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { MongoMerchantRepository } from './repositories/merchants.js';
-import type { HubDocument, MerchantDocument, ProductDocument, TariffRuleDocument, UserDocument } from './repositories/contracts.js';
+import type { MerchantDocument, UserDocument } from './repositories/contracts.js';
 
 export const atlasAdminRouter = Router();
 const adminOnly = [authenticateAtlas, requireAtlasRoleAndOwnership(['admin'])];
