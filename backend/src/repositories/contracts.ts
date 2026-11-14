@@ -36,6 +36,7 @@ export interface ProvenanceDocument extends Document {
   hubId: string;
   occurredAt: Date;
   hash: string;
+  simulated?: boolean;
 }
 
 export interface ProductDocument extends Document {
