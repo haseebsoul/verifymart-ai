@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery,useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle,Check,Shield,Trash2,UserCog,Users } from 'lucide-react';
-import { ATLAS_ROLES,type AtlasRole } from '@verifymart/shared';import { api } from '../lib/api';import { useAuth } from '../context/AuthContext';
+import { ATLAS_ROLES,type AtlasRole } from '@verifymart/shared';import { api } from '../lib/api';import { useAuth } from '../context/AuthContext';import { ReferenceDataAdminSection } from './ReferenceDataAdminSection';
 type AdminUser={id:string;name:string;email:string;role:AtlasRole;lastLogin:string|null;createdAt:string;disabledAt?:string|null};
 type AdminMerchant={_id:string;businessName:string;country:string;status:'pending'|'approved'|'rejected';userId:string};
 type AdminProduct={id:string;sku:string;name:string;brand:string;listingStatus:'draft'|'published'|'archived';merchantId:string|null};
@@ -50,6 +50,7 @@ export function AdminPage(){
       {!products.some(product=>product.merchantId!==null)&&<tr><td colSpan={5} className="empty-table">No merchant listings submitted.</td></tr>}
       </tbody></table></div>
     </section>
+    <ReferenceDataAdminSection/>
     {selected&&<div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><div className="modal-warning"><AlertTriangle size={22}/></div><span className="eyebrow">TWO-STEP CONFIRMATION</span><h2 id="confirm-title">Disable this account?</h2><p>This disables <b>{selected.name}</b> and revokes its sessions. Orders, financial history and audit records are preserved.</p><label>Type the user's email to continue<input value={confirmEmail} onChange={e=>setConfirmEmail(e.target.value)} placeholder={selected.email}/></label><div className="modal-actions"><button className="button button-outline" onClick={()=>setSelected(null)}>Cancel</button><button className="button button-danger" disabled={confirmEmail.toLowerCase()!==selected.email.toLowerCase()||!!busy} onClick={()=>void remove()}>{busy?'Disabling…':'Confirm disable'}</button></div></section></div>}
     <div className="dashboard-inline-note"><UserCog size={17}/> Your own role and account-disable actions are disabled by policy. Every role change and account disable is recorded in the append-only audit log.</div>
   </div>;
