@@ -24,6 +24,11 @@ export function getAtlasDb(): Db {
   return appDb;
 }
 
+export function getAtlasClient(): MongoClient {
+  if (!appClient) throw new Error('Atlas has not been connected. Call connectAtlas() during startup.');
+  return appClient;
+}
+
 export function getCollection<TSchema extends Document = Document>(
   name: AtlasCollectionName
 ): Collection<TSchema> {
