@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Long, MongoClient } from 'mongodb';
 import { ensureAtlasIndexes } from './infrastructure/indexes.js';
@@ -51,7 +51,7 @@ const catalog = [
   ['OPT-018','Anamorphic Cine Lens','Lumina Optics','Optics and Gear','9002.11.00',2190,3,2,99,'HUB-ZRH']
 ] as const;
 
-const tariffBases: Record<string,{duty:number;vat:number}> = {
+const tariffBases: Record<TariffRuleDocument['country'],{duty:number;vat:number}> = {
   US:{duty:0.04,vat:0.08}, UK:{duty:0.045,vat:0.20}, EU:{duty:0.05,vat:0.19},
   AE:{duty:0.05,vat:0.05}, PK:{duty:0.10,vat:0.18}, SG:{duty:0.03,vat:0.09}
 };
@@ -144,7 +144,7 @@ async function seed():Promise<void> {
 
     const threatCollection=database.collection<ThreatDocument>('threats');
     if(await threatCollection.countDocuments()===0) {
-      const lowStock=recordsForThreats(await products.find({status:'low_stock'}).limit(2).toArray());
+      const lowStock=await products.find({status:'low_stock'}).limit(2).toArray();
       for(let i=0;i<lowStock.length;i++) {
         await threatCollection.insertOne({
           _id:'threat_stock_'+(i+1),type:'Low stock',severity:'WARN',
@@ -217,7 +217,6 @@ async function seed():Promise<void> {
   }
 }
 
-function recordsForThreats(products:ProductDocument[]):ProductDocument[] { return products; }
 
 seed().catch((error:unknown)=>{
   const message=error instanceof Error?error.message:'Unknown Atlas seed failure';
