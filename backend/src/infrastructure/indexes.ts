@@ -41,7 +41,7 @@ export async function ensureAtlasIndexes(database: Db): Promise<void> {
   }
 }
 
-export async function inspectExpectedAtlasIndexes(database: Db): Promise<string[]> {
+export async function inspectExpectedAtlasIndexes(database: Db, includeAudit = false): Promise<string[]> {
   const problems: string[] = [];
   for (const plan of indexes) {
     const list = await database.collection(plan.collection).indexes();
