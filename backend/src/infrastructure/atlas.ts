@@ -1,6 +1,6 @@
 import { Db, MongoClient, type Collection, type Document } from 'mongodb';
 import type { AuditLogDocument } from '../repositories/contracts.js';
-import { ensureAtlasIndexes } from './indexes.js';
+import { inspectExpectedAtlasIndexes } from './indexes.js';
 
 export const ATLAS_COLLECTIONS = [
   'users', 'merchants', 'products', 'hubs', 'tariffRules', 'orders',
@@ -52,17 +52,16 @@ export async function connectAtlas(): Promise<Db> {
     const existing = new Set(
       await database.listCollections({}, { nameOnly: true }).map((item) => item.name).toArray()
     );
-    for (const name of ATLAS_COLLECTIONS) {
-      if (existing.has(name)) continue;
-      if (name === 'auditLog') {
-        throw new Error('auditLog must be provisioned by the deployment principal before app startup.');
-      }
-      await database.createCollection(name);
+    const missingCollections = ATLAS_COLLECTIONS.filter((name) => !existing.has(name));
+    if (missingCollections.length) {
+      throw new Error('Atlas database is missing provisioned collections: ' + missingCollections.join(', '));
     }
 
-    // Indexing auditLog requires a deployment credential. Runtime credentials
-    // must not have update/remove (or schema-management) privileges on that collection.
-    await ensureAtlasIndexes(database);
+    const missingIndexes = await inspectExpectedAtlasIndexes(database);
+    if (missingIndexes.length) {
+      throw new Error('Atlas database is missing required indexes: ' + missingIndexes.join(', '));
+    }
+
     appClient = client;
     appDb = database;
     return database;
