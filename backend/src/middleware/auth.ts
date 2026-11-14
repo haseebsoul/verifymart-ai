@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import type { Role } from '@verifymart/shared';
+import { db } from '../db.js';
 
 export interface AuthUser { id: string; name: string; email: string; role: Role }
 declare global { namespace Express { interface Request { user?: AuthUser; requestId?: string } } }
@@ -24,7 +25,12 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
   const user = token ? verifyAccessToken(token) : null;
   if (!user) { res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'A valid access token is required.', requestId: req.requestId ?? 'unknown' } }); return; }
-  req.user = user; next();
+  const current = db.prepare('SELECT id,name,email,role,disabled_at FROM users WHERE id=?').get(user.id) as { id:string; name:string; email:string; role:string; disabled_at:string|null } | undefined;
+  if (!current || current.disabled_at || !['user','operator','admin'].includes(current.role)) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'The account is no longer available.', requestId: req.requestId ?? 'unknown' } });
+    return;
+  }
+  req.user = { id: current.id, name: current.name, email: current.email, role: current.role as Role }; next();
 }
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
   const header = req.header('authorization');
