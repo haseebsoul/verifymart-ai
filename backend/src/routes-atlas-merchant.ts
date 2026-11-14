@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
@@ -30,7 +31,7 @@ atlasMerchantRouter.post('/merchant/apply', authenticateAtlas, asyncHandler(asyn
 
   const now = new Date();
   const merchant: MerchantDocument = {
-    _id: 'mrc_' + crypto.randomUUID().replaceAll('-', '').slice(0, 18),
+    _id: 'mrc_' + randomUUID().replaceAll('-', '').slice(0, 18),
     userId: principal.id,
     businessName: input.businessName,
     country: input.country,
@@ -44,11 +45,12 @@ atlasMerchantRouter.post('/merchant/apply', authenticateAtlas, asyncHandler(asyn
   try {
     await session.withTransaction(async () => {
       await database.collection<MerchantDocument>('merchants').insertOne(merchant, { session });
-      await database.collection<UserDocument>('users').updateOne(
+      const changed = await database.collection<UserDocument>('users').updateOne(
         { _id: principal.id, role: 'shopper' },
         { $set: { role: 'merchant' } },
         { session }
       );
+      if (changed.modifiedCount !== 1) throw Object.assign(new Error('Account role changed during merchant application.'), { status: 409, code: 'ROLE_CONFLICT' });
     });
   } finally {
     await session.endSession();
