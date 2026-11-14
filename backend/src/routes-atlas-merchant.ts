@@ -1,17 +1,33 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { Router } from 'express';
+import { Long } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
-import type { InventoryAdjustmentDocument, MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
+import type { HubDocument, InventoryAdjustmentDocument, MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
 
 export const atlasMerchantRouter = Router();
 
 const applicationSchema = z.object({
   businessName: z.string().trim().min(2).max(120),
   country: z.enum(['US','UK','EU','AE','PK','SG'])
+});
+
+const merchantListingSchema = z.object({
+  sku: z.string().trim().min(3).max(60).regex(/^[A-Za-z0-9._-]+$/),
+  batchReference: z.string().trim().min(4).max(120),
+  name: z.string().trim().min(2).max(160),
+  brand: z.string().trim().min(2).max(100),
+  category: z.enum(['Audio and Studio','Precision Horology','Edge Computing','Optics and Gear']),
+  hsCode: z.string().trim().min(4).max(16).regex(/^[0-9A-Za-z]+$/),
+  priceCents: z.number().int().safe().positive(),
+  stock: z.number().int().min(0).max(100000),
+  reorderThreshold: z.number().int().min(0).max(100000),
+  originHubCode: z.string().trim().min(2).max(20),
+  slaHours: z.number().int().min(1).max(720),
+  imageUrl: z.string().url().max(2048).optional()
 });
 
 atlasMerchantRouter.post('/merchant/apply', authenticateAtlas, asyncHandler(async (req, res) => {
@@ -89,6 +105,67 @@ atlasMerchantRouter.get('/merchant/listings', authenticateAtlas, requireAtlasRol
   const products = await getAtlasDb().collection<ProductDocument>('products')
     .find(filter).sort({ updatedAt: -1, name: 1 }).limit(200).toArray();
   res.json({ products });
+}));
+
+atlasMerchantRouter.post('/merchant/listings', authenticateAtlas, requireAtlasRoleAndOwnership(['merchant']), asyncHandler(async (req, res) => {
+  const merchantId = req.merchantId;
+  if (!merchantId) {
+    res.status(403).json({ error: { code: 'MERCHANT_ACCESS_DENIED', message: 'An active merchant profile is required.', requestId: req.requestId } });
+    return;
+  }
+  const input = merchantListingSchema.parse(req.body);
+  const database = getAtlasDb();
+  const hub = await database.collection<HubDocument>('hubs').findOne({ code: input.originHubCode });
+  if (!hub) {
+    res.status(422).json({ error: { code: 'HUB_NOT_FOUND', message: 'Choose an existing origin hub.', requestId: req.requestId } });
+    return;
+  }
+  const merchant = await database.collection<MerchantDocument>('merchants').findOne({ _id: merchantId });
+  if (!merchant || merchant.status === 'rejected') {
+    res.status(403).json({ error: { code: 'MERCHANT_ACCESS_DENIED', message: 'Merchant profile is not eligible to create listings.', requestId: req.requestId } });
+    return;
+  }
+  const now = new Date();
+  const product: ProductDocument = {
+    _id: 'prd_' + randomUUID().replaceAll('-', '').slice(0, 18),
+    sku: input.sku,
+    batchHash: createHash('sha256').update(merchantId + ':' + input.sku.toLowerCase() + ':' + input.batchReference).digest('hex'),
+    hsCode: input.hsCode,
+    name: input.name,
+    brand: input.brand,
+    category: input.category,
+    priceCents: Long.fromNumber(input.priceCents),
+    stock: input.stock,
+    reorderThreshold: input.reorderThreshold,
+    originHubId: hub.code,
+    authenticityScore: 0,
+    slaHours: input.slaHours,
+    imageUrl: input.imageUrl ?? '',
+    status: 'audit_flag',
+    listingStatus: merchant.status === 'approved' ? 'published' : 'draft',
+    merchantId,
+    managedBy: 'merchant',
+    provenanceEvents: [],
+    createdAt: now,
+    updatedAt: now
+  };
+  try {
+    await database.collection<ProductDocument>('products').insertOne(product);
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ error: { code: 'PRODUCT_CONFLICT', message: 'SKU or batch reference already exists.', requestId: req.requestId } });
+      return;
+    }
+    throw error;
+  }
+  await appendAuditEvent({
+    actorId: req.atlasPrincipal!.id,
+    action: 'MERCHANT_LISTING_CREATED',
+    targetType: 'product',
+    targetId: product._id,
+    details: { sku: product.sku, listingStatus: product.listingStatus, batchHash: product.batchHash }
+  });
+  res.status(201).json({ product, provenanceNote: 'Application-generated verification hash only; no manufacturer attestation is implied.' });
 }));
 
 atlasMerchantRouter.patch(
