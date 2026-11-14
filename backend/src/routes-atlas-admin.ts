@@ -7,10 +7,130 @@ import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/at
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { MongoMerchantRepository } from './repositories/merchants.js';
-import type { MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
+import type { HubDocument, MerchantDocument, ProductDocument, TariffRuleDocument, UserDocument } from './repositories/contracts.js';
 
 export const atlasAdminRouter = Router();
 const adminOnly = [authenticateAtlas, requireAtlasRoleAndOwnership(['admin'])];
+
+
+const hubInputSchema = z.object({
+  code: z.string().trim().min(3).max(20).regex(/^HUB-[A-Z0-9-]+$/),
+  name: z.string().trim().min(2).max(100),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  latencyMs: z.number().int().min(0).max(60000).default(0),
+  status: z.enum(['online','warning','offline','retired']).default('online'),
+  queueDepth: z.number().int().min(0).max(100000).default(0)
+}).strict();
+
+const hubUpdateSchema = hubInputSchema.omit({ code: true }).partial()
+  .refine(value => Object.keys(value).length > 0, 'Provide at least one hub field to update.');
+
+const tariffInputSchema = z.object({
+  hsPrefix: z.string().trim().max(16).regex(/^[0-9A-Za-z]*$/),
+  country: z.enum(['US','UK','EU','AE','PK','SG']),
+  dutyRateBps: z.number().int().min(0).max(10000),
+  vatRateBps: z.number().int().min(0).max(10000),
+  vatIncludesCarrier: z.boolean()
+}).strict();
+
+const tariffUpdateSchema = z.object({
+  dutyRateBps: z.number().int().min(0).max(10000).optional(),
+  vatRateBps: z.number().int().min(0).max(10000).optional(),
+  vatIncludesCarrier: z.boolean().optional()
+}).strict().refine(value => Object.keys(value).length > 0, 'Provide at least one tariff field to update.');
+
+atlasAdminRouter.get('/admin/hubs', ...adminOnly, asyncHandler(async (_req, res) => {
+  const hubs = await getAtlasDb().collection<HubDocument>('hubs').find({})
+    .sort({ code: 1 }).limit(250).toArray();
+  res.json({ hubs });
+}));
+
+atlasAdminRouter.post('/admin/hubs', ...adminOnly, asyncHandler(async (req, res) => {
+  const input = hubInputSchema.parse(req.body);
+  const hub: HubDocument = { _id: input.code, ...input };
+  try {
+    await getAtlasDb().collection<HubDocument>('hubs').insertOne(hub);
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ error: { code: 'HUB_CODE_EXISTS', message: 'A hub with this code already exists.', requestId: req.requestId } });
+      return;
+    }
+    throw error;
+  }
+  await appendAuditEvent({ actorId: req.atlasPrincipal!.id, action: 'HUB_CREATED', targetType: 'hub', targetId: hub._id, details: { code: hub.code, name: hub.name } });
+  res.status(201).json({ hub });
+}));
+
+atlasAdminRouter.patch('/admin/hubs/:id', ...adminOnly, asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) { res.status(404).json({ error: { code: 'HUB_NOT_FOUND', message: 'Hub was not found.', requestId: req.requestId } }); return; }
+  const input = hubUpdateSchema.parse(req.body);
+  const hub = await getAtlasDb().collection<HubDocument>('hubs').findOneAndUpdate(
+    { _id: id },
+    { $set: { ...input, updatedAt: new Date() } },
+    { returnDocument: 'after' }
+  );
+  if (!hub) { res.status(404).json({ error: { code: 'HUB_NOT_FOUND', message: 'Hub was not found.', requestId: req.requestId } }); return; }
+  await appendAuditEvent({ actorId: req.atlasPrincipal!.id, action: 'HUB_UPDATED', targetType: 'hub', targetId: id, details: { changedFields: Object.keys(input), status: hub.status } });
+  res.json({ hub });
+}));
+
+atlasAdminRouter.get('/admin/tariff-rules', ...adminOnly, asyncHandler(async (_req, res) => {
+  const rules = await getAtlasDb().collection<TariffRuleDocument>('tariffRules').find({})
+    .sort({ country: 1, hsPrefix: 1 }).limit(1000).toArray();
+  res.json({ rules });
+}));
+
+atlasAdminRouter.post('/admin/tariff-rules', ...adminOnly, asyncHandler(async (req, res) => {
+  const input = tariffInputSchema.parse(req.body);
+  const rule: TariffRuleDocument = {
+    _id: 'tar_' + randomUUID().replaceAll('-', '').slice(0, 18),
+    ...input,
+    source: 'seed-tariff-v1'
+  };
+  try {
+    await getAtlasDb().collection<TariffRuleDocument>('tariffRules').insertOne(rule);
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ error: { code: 'TARIFF_RULE_EXISTS', message: 'A rule already exists for this HS prefix and destination.', requestId: req.requestId } });
+      return;
+    }
+    throw error;
+  }
+  await appendAuditEvent({ actorId: req.atlasPrincipal!.id, action: 'TARIFF_RULE_CREATED', targetType: 'tariffRule', targetId: rule._id, details: { hsPrefix: rule.hsPrefix, country: rule.country } });
+  res.status(201).json({ rule });
+}));
+
+atlasAdminRouter.patch('/admin/tariff-rules/:id', ...adminOnly, asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) { res.status(404).json({ error: { code: 'TARIFF_RULE_NOT_FOUND', message: 'Tariff rule was not found.', requestId: req.requestId } }); return; }
+  const input = tariffUpdateSchema.parse(req.body);
+  const rule = await getAtlasDb().collection<TariffRuleDocument>('tariffRules').findOneAndUpdate(
+    { _id: id },
+    { $set: input },
+    { returnDocument: 'after' }
+  );
+  if (!rule) { res.status(404).json({ error: { code: 'TARIFF_RULE_NOT_FOUND', message: 'Tariff rule was not found.', requestId: req.requestId } }); return; }
+  await appendAuditEvent({ actorId: req.atlasPrincipal!.id, action: 'TARIFF_RULE_UPDATED', targetType: 'tariffRule', targetId: id, details: { changedFields: Object.keys(input), country: rule.country, hsPrefix: rule.hsPrefix } });
+  res.json({ rule });
+}));
+
+atlasAdminRouter.delete('/admin/tariff-rules/:id', ...adminOnly, asyncHandler(async (req, res) => {
+  const id = req.params.id;
+  if (!id) { res.status(404).json({ error: { code: 'TARIFF_RULE_NOT_FOUND', message: 'Tariff rule was not found.', requestId: req.requestId } }); return; }
+  const collection = getAtlasDb().collection<TariffRuleDocument>('tariffRules');
+  const rule = await collection.findOne({ _id: id });
+  if (!rule) { res.status(404).json({ error: { code: 'TARIFF_RULE_NOT_FOUND', message: 'Tariff rule was not found.', requestId: req.requestId } }); return; }
+  if (rule.hsPrefix === '') {
+    res.status(409).json({ error: { code: 'BASE_TARIFF_PROTECTED', message: 'The destination base tariff cannot be deleted; update it instead.', requestId: req.requestId } });
+    return;
+  }
+  const result = await collection.deleteOne({ _id: id });
+  if (result.deletedCount !== 1) { res.status(409).json({ error: { code: 'TARIFF_RULE_CONFLICT', message: 'Tariff rule changed concurrently.', requestId: req.requestId } }); return; }
+  await appendAuditEvent({ actorId: req.atlasPrincipal!.id, action: 'TARIFF_RULE_DELETED', targetType: 'tariffRule', targetId: id, details: { hsPrefix: rule.hsPrefix, country: rule.country, note: 'Historical order quotes retain their stored snapshots.' } });
+  res.status(204).end();
+}));
 
 atlasAdminRouter.get('/admin/users', ...adminOnly, asyncHandler(async (_req, res) => {
   const users = await getAtlasDb().collection<UserDocument>('users')
