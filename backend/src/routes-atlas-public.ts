@@ -31,9 +31,30 @@ atlasPublicRouter.get('/products', asyncHandler(async (req, res) => {
   filtered = [...filtered].sort((a,b) => {
     if (sort === 'price_asc') return a.priceCents.compare(b.priceCents);
     if (sort === 'price_desc') return b.priceCents.compare(a.priceCents);
+    if (sort === 'authenticity') return b.authenticityScore - a.authenticityScore;
     return a.name.localeCompare(b.name);
   });
-  res.json({ products: filtered.map(product => ({ ...product, priceUsd: product.priceCents.toNumber() / 100 })) });
+  res.json({
+    total: filtered.length,
+    products: filtered.map(product => ({
+      id: product._id,
+      sku: product.sku,
+      batchHash: product.batchHash,
+      hsCode: product.hsCode,
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      priceUsd: product.priceCents.toNumber() / 100,
+      dutyRatePct: 0,
+      stock: product.stock,
+      reorderThreshold: product.reorderThreshold,
+      originHubId: product.originHubId,
+      authenticityScore: product.authenticityScore,
+      slaHours: product.slaHours,
+      imageUrl: product.imageUrl,
+      status: product.status
+    }))
+  });
 }));
 
 atlasPublicRouter.get('/products/:id', asyncHandler(async (req, res) => {
