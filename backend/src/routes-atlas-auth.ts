@@ -4,7 +4,7 @@ import type { Collection } from 'mongodb';
 import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { MongoServerError } from 'mongodb';
+import { MongoServerError, type UpdateFilter } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas } from './middleware/atlas-auth.js';
@@ -82,7 +82,7 @@ async function newRefreshSession(userId: string, res: Response, userCollection: 
   const now = new Date();
   await userCollection.updateOne(
     { _id: userId },
-    {
+    ({
       $push: {
         refreshSessions: {
           tokenHash: hashToken(token),
@@ -90,8 +90,7 @@ async function newRefreshSession(userId: string, res: Response, userCollection: 
           expiresAt: new Date(now.getTime() + sevenDaysMs)
         }
       }
-    }
-  );
+    } as unknown as UpdateFilter<UserDocument>));
   res.cookie(cookieName, token, cookieOptions());
 }
 
@@ -175,7 +174,7 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
 
   const existing = user.refreshSessions.find(session => session.tokenHash === tokenHash);
   if (!existing || existing.expiresAt.getTime() <= Date.now()) {
-    await users.updateOne({ _id: user._id }, { $pull: { refreshSessions: { tokenHash } } });
+    await users.updateOne({ _id: user._id }, { $pull: { refreshSessions: { tokenHash } } } as unknown as UpdateFilter<UserDocument>);
     res.clearCookie(cookieName, cookieOptions());
     res.status(401).json({ error: { code: 'REFRESH_EXPIRED', message: 'Refresh session has expired. Sign in again.', requestId: req.requestId } });
     return;
@@ -185,7 +184,7 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
   const now = new Date();
   const rotated = await users.updateOne(
     { _id: user._id, 'refreshSessions.tokenHash': tokenHash, $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }] },
-    {
+    ({
       $pull: { refreshSessions: { tokenHash } },
       $push: {
         refreshSessions: {
@@ -194,8 +193,7 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
           expiresAt: new Date(now.getTime() + sevenDaysMs)
         }
       }
-    }
-  );
+    } as unknown as UpdateFilter<UserDocument>));
   if (rotated.modifiedCount !== 1) {
     res.clearCookie(cookieName, cookieOptions());
     res.status(401).json({ error: { code: 'REFRESH_REPLAYED', message: 'Refresh token was already rotated. Sign in again.', requestId: req.requestId } });
@@ -211,7 +209,7 @@ atlasAuthRouter.post('/auth/logout', asyncHandler(async (req, res) => {
   if (refresh) {
     await getAtlasDb().collection<UserDocument>('users').updateMany(
       { 'refreshSessions.tokenHash': hashToken(refresh) },
-      { $pull: { refreshSessions: { tokenHash: hashToken(refresh) } } }
+      { $pull: { refreshSessions: { tokenHash: hashToken(refresh) } } } as unknown as UpdateFilter<UserDocument>
     );
   }
   res.clearCookie(cookieName, cookieOptions());
