@@ -52,3 +52,57 @@ A separate `verifymart_dev` database and database principal are required for iso
 ## Audit limitations
 
 This audit reads source and repository metadata on GitHub and inspects Atlas project/cluster/database metadata. A network attempt to clone GitHub into the execution container failed because the container could not resolve `github.com`; consequently no local npm build, test, or browser run is claimed here. The branch/PR CI workflow is the appropriate executable verification path once changes are pushed. Atlas collection names and database user scope were inspected live; this audit did not mutate the legacy `verifymart_v14` database.
+
+
+---
+
+## Implementation progress update — 2026-11-14
+
+This update supersedes implementation-state statements in the original baseline audit above. The original findings are retained as a dated description of the code before the Atlas migration.
+
+### Implemented on `feat/atlas-five-role-migration`
+
+- The normal root and backend `dev`, `start`, and `seed` commands now target the Atlas runtime. SQLite compatibility commands are explicitly named `*:sqlite`; the legacy SQLite database module refuses to run with `NODE_ENV=production`.
+- The Atlas runtime checks configured database names and rejects `verifymart_v14` as an application target. Startup validates the JWT secret and production CORS configuration. Readiness checks the application and separate audit connections.
+- Shared API contracts expose the five SRS roles. Atlas middleware reloads the persisted account role/status for every request and resolves merchant ownership server-side.
+- Atlas routes and repositories now cover authentication/session refresh, public catalogue and verification, landed-cost estimates, merchant onboarding/listings, shopper checkout and order history, inventory operations, threat signals, simulated escrow transitions, administrative user/merchant/listing governance, settings, audit and reports.
+- Shopper order history and merchant onboarding, merchant/admin workspaces, and account profile/password settings are connected to Atlas APIs. The storefront cart sends product IDs and quantities; the server computes the quote and the order repository applies the stock/order transaction with an idempotency key.
+- Checkout aggregates duplicate product IDs, uses integer cents/BSON Long, checks stock conditionally, validates the subtotal against the transaction's product-price snapshots and validates total arithmetic. Public listings and checkout are filtered to published platform products or active, approved merchant-owned products.
+- Duty rounding uses integer/BigInt half-up calculations and explicit safe-integer checks.
+- The Atlas seed fills missing deterministic catalogue records without overwriting existing records. Demo accounts require an explicitly configured `DEMO_PASSWORD`; no default demo password is committed.
+- Migration defaults to dry-run, is restricted to dev/staging, uses read-only SQLite source access, aborts on malformed JSON or existing target IDs, uses insert-only writes and includes in-memory SQLite fixture tests.
+- README and Atlas bootstrap instructions describe Atlas-first commands, credential isolation, simulated capabilities and safe migration requirements.
+
+### Latest executable verification
+
+GitHub Actions run **43654588715** completed successfully for exact branch head **`7c0c276e2ba2232bfb465da5f2568d2dd8745089`**:
+
+- npm install — passed
+- shared/backend/frontend type-check — passed
+- shared/backend/frontend build — passed
+- backend Vitest — 4 test files passed
+- frontend Vitest — 1 test file passed
+- ESLint — passed
+- color lint — passed
+
+The backend V8 report showed **15.48% statements/lines, 52.19% branches and 36.11% functions**. This is far below the SRS 80% core-service coverage requirement. The existing 4 backend files contain 16 tests; frontend has 2 unit tests. The workflow does not demonstrate complete endpoint/permission coverage, all five Playwright journeys, cross-owner negative flows, or axe/WCAG acceptance. A passing configured CI run is not a full SRS acceptance result.
+
+### External verification and operational blockers
+
+- The current `verifymart_dev` database was inspected read-only. All 11 required collections and the expected declared indexes (including listing visibility indexes) were present.
+- The application and audit database users/URIs are not provisioned for `verifymart_dev`, and the network allowlist is not confirmed for the application host. The existing `verifymart_app` account is scoped to legacy `verifymart_v14` and must not be broadened or reused as a shortcut.
+- The dev product collection was empty at last count; the 24-product seed was not run because application credentials are unavailable. Hubs (5), tariff rules (78) and settings (3) are already present.
+- No application startup, readiness check using real app/audit credentials, live checkout transaction, or live WebSocket session has been exercised against Atlas.
+- No local SQLite source file or migration credentials were available. No migration or seed was executed.
+- Atlas cluster is M0 and is not a production HA/backup/PITR configuration.
+
+### Remaining release gates
+
+1. Provision a least-privilege `verifymart_dev` application principal and a separate custom audit principal with database-enforced `find`/`insert` only on `auditLog`; configure the restricted network allowlist and store URIs/secrets in the approved environment mechanism.
+2. Run Atlas startup/readiness and seed using those development credentials; verify the 24-product catalogue and seed idempotency. Do not target `verifymart_v14`.
+3. Expand backend tests to cover the actual routes and service/repository behavior: registration/login/lockout/refresh/logout, account disable/session revocation, merchant approval/rejection, listing moderation, cross-owner IDOR denials, inventory adjustment limits, threat transitions, escrow state transitions, and checkout transaction/replay/race failures.
+4. Raise core-service coverage to the SRS 80% target. Add five Playwright role journeys, denied cross-role/cross-owner attempts, and axe accessibility checks for key pages/flows; record results.
+5. Exercise the app with the provisioned Atlas principals and a real staging environment. Review SRE/backup/restore and production-tier prerequisites before any cutover.
+6. Review the complete PR diff and the outstanding product workflow/permission matrix against the SRS before changing the PR from draft.
+
+The PR remains draft/open. No merge, deployment, production configuration change, production database operation, seed execution, or migration was performed as part of this update.
