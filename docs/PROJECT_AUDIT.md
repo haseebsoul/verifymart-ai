@@ -106,3 +106,45 @@ The backend V8 report showed **15.48% statements/lines, 52.19% branches and 36.1
 6. Review the complete PR diff and the outstanding product workflow/permission matrix against the SRS before changing the PR from draft.
 
 The PR remains draft/open. No merge, deployment, production configuration change, production database operation, seed execution, or migration was performed as part of this update.
+
+
+---
+
+## Final integration checkpoint — 2026-11-14
+
+The current feature-branch head at this checkpoint is `97e8af5d1cdd68f267ea36e7e9832965f93a1d1c`. This supersedes the earlier progress-checkpoint SHA and its test figures.
+
+### Added since the previous checkpoint
+
+- Merchant listing update and soft-archive APIs enforce ownership and current merchant/listing state in the authorization middleware. Pending merchants can edit/archive drafts only; approved merchants can edit/archive drafts and published listings.
+- Rejected merchant applications can be resubmitted with a new business profile and a new audit entry.
+- Merchant dashboard exposes edit/archive/resubmit flows and uses the Atlas DTO fields.
+- Admin read APIs for pending/all merchant applications and merchant-owned product listings are now registered; admin listing moderation is server-audited and only allows publication for an approved merchant whose user is active and still has the merchant role.
+- Shopper checkout UI clears any previous quote when cart/destination changes and blocks checkout until the server quote matches the current cart signature.
+
+### Exact-head CI evidence
+
+GitHub Actions **run 43655171302** completed successfully for exact head **`97e8af5d1cdd68f267ea36e7e9832965f93a1d1c`**:
+
+- `npm install --no-audit --no-fund` — pass
+- shared/backend/frontend TypeScript type-check — pass
+- shared/backend/frontend production build — pass
+- backend unit tests — 4 test files passed
+- frontend unit tests — 1 test file passed
+- ESLint — pass
+- color lint — pass
+
+The backend V8 coverage report for this exact run was **14.81% statements/lines, 51.33% branches and 36.11% functions**. It is below the SRS 80% core-service gate and lower than the earlier checkpoint because new feature code was added without equivalent test coverage. The green CI result covers only the configured checks above; the workflow does not establish full SRS acceptance.
+
+### Explicitly incomplete SRS requirements
+
+- Admin hub CRUD and tariff-rule CRUD routes and management UI are not yet integrated. Public hub reads and tariff-based calculations exist, but that is not admin governance.
+- There is no comprehensive Supertest suite for the complete Atlas API and negative role/ownership matrix. Current Atlas tests cover a limited set of auth middleware cases, core calculations/aggregation and migration fixture behavior only.
+- The five separate Playwright role journeys and denied cross-role/cross-owner browser paths are not demonstrated as passing.
+- No axe accessibility result or WCAG 2.2 AA journey acceptance is recorded.
+- No verified 80% core-service coverage result, full security/secret scan or measured SRE SLO evidence is present.
+- The code has not been started against the actual `verifymart_dev` database using dedicated application and audit credentials. The Atlas management connection verified collections and indexes only.
+- The dev products collection remains empty; the idempotent seed has not run. There is no local SQLite source / approved migration credential in this work session; migration remains dry-run tooling only and has not been executed.
+- The existing M0 cluster is not a production availability/backup posture. Production credentials, network access, backup/PITR and staging acceptance remain separate release gates.
+
+PR #1 remains **open and draft**. No merge, deployment, main-branch write, seed execution, migration, or production/legacy database operation was performed.
