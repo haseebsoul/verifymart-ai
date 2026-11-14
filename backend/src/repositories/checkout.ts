@@ -38,7 +38,7 @@ function notFound(message: string): Error {
   return Object.assign(new Error(message), { status: 404, code: 'PRODUCT_NOT_FOUND' });
 }
 
-function normalizeItems(items: CheckoutItemRequest[]): CheckoutItemRequest[] {
+export function normalizeItems(items: CheckoutItemRequest[]): CheckoutItemRequest[] {
   const quantities = new Map<string, number>();
   for (const item of items) {
     if (!item.productId || !Number.isSafeInteger(item.quantity) || item.quantity < 1) {
