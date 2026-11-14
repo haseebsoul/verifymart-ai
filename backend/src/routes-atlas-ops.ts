@@ -122,7 +122,7 @@ atlasOpsRouter.post(
     const database = getAtlasDb();
     const products = database.collection<ProductDocument>('products');
     const session = getAtlasClient().startSession();
-    const resultBox: { updated?: ProductDocument } = {};
+    const resultBox: { updated: ProductDocument | null } = { updated: null };
     try {
       await session.withTransaction(async () => {
         const current = await products.findOne({ _id: productId }, { session });
@@ -133,7 +133,7 @@ atlasOpsRouter.post(
           { $inc: { stock: input.quantity }, $set: { updatedAt: now, status: current.status === 'low_stock' ? 'verified' : current.status } },
           { session, returnDocument: 'after' }
         );
-        resultBox.updated = result ?? undefined;
+        resultBox.updated = result ?? null;
         if (!resultBox.updated) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
         await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments').insertOne({
           _id: 'iad_' + randomUUID().replaceAll('-', '').slice(0, 18),
@@ -168,7 +168,7 @@ atlasOpsRouter.patch(
     const database = getAtlasDb();
     const products = database.collection<ProductDocument>('products');
     const session = getAtlasClient().startSession();
-    const resultBox: { changed?: ProductDocument } = {};
+    const resultBox: { changed: ProductDocument | null } = { changed: null };
     let delta = 0;
     try {
       await session.withTransaction(async () => {
@@ -186,7 +186,7 @@ atlasOpsRouter.patch(
           { $set: { stock: input.stock, updatedAt: now, status: input.stock <= current.reorderThreshold ? 'low_stock' : current.status === 'low_stock' ? 'verified' : current.status } },
           { session, returnDocument: 'after' }
         );
-        resultBox.changed = result ?? undefined;
+        resultBox.changed = result ?? null;
         if (!resultBox.changed) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
         if (delta !== 0) {
           await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments').insertOne({
