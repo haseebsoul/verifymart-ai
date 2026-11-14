@@ -41,7 +41,8 @@ export class MongoProductRepository {
       listingStatus: 'published'
     });
     if (!product) return null;
-    if (!product.merchantId) return product;
+    if (product.managedBy === 'platform' && !product.merchantId) return product;
+    if (product.managedBy !== 'merchant' || !product.merchantId) return null;
     const allowed = await this.activeApprovedMerchantIds();
     return allowed.includes(product.merchantId) ? product : null;
   }
@@ -61,7 +62,9 @@ export class MongoProductRepository {
         { _id: normalized }
       ]
     });
-    if (!product || !product.merchantId) return product;
+    if (!product) return null;
+    if (product.managedBy === 'platform' && !product.merchantId) return product;
+    if (product.managedBy !== 'merchant' || !product.merchantId) return null;
     const allowed = await this.activeApprovedMerchantIds();
     return allowed.includes(product.merchantId) ? product : null;
   }
