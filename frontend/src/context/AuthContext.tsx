@@ -1,4 +1,4 @@
-import { createContext,useContext,useEffect,useMemo,useState } from 'react';
+import { createContext,useCallback,useContext,useEffect,useMemo,useState } from 'react';
 import type { ReactNode } from 'react';
 import { api,setAccessToken } from '../lib/api';
 import type { PublicUser } from '@verifymart/shared';
@@ -8,8 +8,9 @@ const AuthContext=createContext<AuthContextValue|null>(null);
 export function AuthProvider({children}:{children:ReactNode}){
   const [user,setUser]=useState<PublicUser|null>(null);const [loading,setLoading]=useState(true);const [demoMode,setDemoMode]=useState(false);
   const apply=(data:{user:PublicUser;accessToken?:string})=>{setUser(data.user);if(data.accessToken)setAccessToken(data.accessToken);};
-  const refreshUser=async()=>{try{const result=await api<{user:PublicUser;accessToken?:string}>('/auth/refresh',{method:'POST'});apply(result);}catch{setUser(null);setAccessToken(null);}};
-  useEffect(()=>{void Promise.all([api<{demoMode:boolean}>('/auth/mode').then(r=>setDemoMode(r.demoMode)).catch(()=>setDemoMode(false)),refreshUser()]).finally(()=>setLoading(false));},[]);
+  const refreshUser=useCallback(async()=>{try{const result=await api<{user:PublicUser;accessToken?:string}>('/auth/refresh',{method:'POST'});apply(result);}catch{setUser(null);setAccessToken(null);}},[]);
+  useEffect(()=>{void Promise.all([api<{demoMode:boolean}>('/auth/mode').then(r=>setDemoMode(r.demoMode)).catch(()=>setDemoMode(false)),refreshUser()]).finally(()=>setLoading(false));},[refreshUser]);
+  useEffect(()=>{if(!user)return;const refresh=()=>{if(document.visibilityState==='visible')void refreshUser();};const interval=window.setInterval(refresh,10*60*1000);window.addEventListener('focus',refresh);return()=>{window.clearInterval(interval);window.removeEventListener('focus',refresh);};},[user?.id,refreshUser]);
   const login=async(email:string,password:string)=>{const result=await api<{user:PublicUser;accessToken:string}>('/auth/login',{method:'POST',body:JSON.stringify({email,password})});apply(result);};
   const register=async(name:string,email:string,password:string)=>{const result=await api<{user:PublicUser;accessToken:string}>('/auth/register',{method:'POST',body:JSON.stringify({name,email,password})});apply(result);};
   const logout=async()=>{try{await api('/auth/logout',{method:'POST'});}finally{setUser(null);setAccessToken(null);}};
