@@ -37,6 +37,8 @@ const indexes: IndexPlan[] = [
 
 export async function ensureAtlasIndexes(database: Db): Promise<void> {
   for (const plan of indexes) {
+    // auditLog indexes are managed by the deploy principal, not the runtime app credential.
+    if (plan.collection === 'auditLog') continue;
     await database.collection(plan.collection).createIndex(plan.keys, plan.options);
   }
 }
@@ -44,6 +46,7 @@ export async function ensureAtlasIndexes(database: Db): Promise<void> {
 export async function inspectExpectedAtlasIndexes(database: Db, includeAudit = false): Promise<string[]> {
   const problems: string[] = [];
   for (const plan of indexes) {
+    if (!includeAudit && plan.collection === 'auditLog') continue;
     const list = await database.collection(plan.collection).indexes();
     const found = list.some((item) => item.name === plan.options?.name);
     if (!found) problems.push(plan.collection + '.' + (plan.options?.name ?? 'unnamed'));
