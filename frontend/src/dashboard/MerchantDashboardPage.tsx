@@ -31,7 +31,7 @@ export function MerchantDashboardPage(){
         ...(form.imageUrl?{imageUrl:form.imageUrl}:{})
       })});
       setForm(v=>({...v,sku:'',batchReference:'',name:'',brand:'',hsCode:'',priceUsd:'',stock:'0',imageUrl:''}));
-      setFeedback('Listing saved. It remains a private draft until an administrator approves the merchant application.');
+      setFeedback(merchant?.status==='approved'?'Listing submitted and published to the catalog.':'Listing saved as a private draft until an administrator approves the merchant application.');
       await client.invalidateQueries({queryKey:['merchant-listings']});
     }catch(e){setError(e instanceof Error?e.message:'Listing could not be created.');}
     finally{setBusy(false);}
