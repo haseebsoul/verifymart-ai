@@ -110,6 +110,9 @@ export async function closeAtlas(): Promise<void> {
 
 export async function checkAtlasReady(): Promise<void> {
   await getAtlasDb().command({ ping: 1 });
+  if (!auditDb) throw new Error('The separate Atlas audit principal is not connected.');
+  await auditDb.command({ ping: 1 });
+  await auditDb.collection<AuditLogDocument>('auditLog').findOne({}, { projection: { _id: 1 } });
 }
 
 export function asUtcDate(value: string | Date | null | undefined): Date | null {
