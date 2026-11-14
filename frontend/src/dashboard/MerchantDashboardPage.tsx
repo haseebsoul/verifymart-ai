@@ -4,7 +4,7 @@ import { BadgeCheck,Building2,ClipboardList,PackagePlus,ShieldAlert } from 'luci
 import { api } from '../lib/api';
 
 type MerchantProfile={_id:string;businessName:string;country:string;status:'pending'|'approved'|'rejected';trustScore:number;rejectionReason?:string};
-type Listing={id:string;_id?:string;sku:string;name:string;brand:string;category:string;priceUsd?:number;stock:number;status:string;listingStatus:'draft'|'published'|'archived'};
+type Listing={id:string;_id?:string;sku:string;name:string;brand:string;category:string;hsCode:string;priceUsd:number;imageUrl?:string;stock:number;status:string;listingStatus:'draft'|'published'|'archived'};
 type MerchantOrder={id:string;destination:string;total:number;state:string;createdAt:string;items:Array<{sku:string;name:string;quantity:number}>};
 type Threat={id:string;type:string;sku:string;severity:string};
 
@@ -16,10 +16,49 @@ export function MerchantDashboardPage(){
   const {data:threatsData}=useQuery({queryKey:['threats'],queryFn:()=>api<{threats:Threat[]}>('/threats')});
   const [form,setForm]=useState({sku:'',batchReference:'',name:'',brand:'',category:'Audio and Studio',hsCode:'',priceUsd:'',stock:'0',reorderThreshold:'5',originHubCode:'HUB-KHI',slaHours:'48',imageUrl:''});
   const [busy,setBusy]=useState(false);const [feedback,setFeedback]=useState('');const [error,setError]=useState('');
+  const [resubmit,setResubmit]=useState({businessName:'',country:'PK'});const [resubmitting,setResubmitting]=useState(false);
+  const [editing,setEditing]=useState<string|null>(null);const [editForm,setEditForm]=useState({name:'',brand:'',category:'Audio and Studio',hsCode:'',priceUsd:'',imageUrl:''});const [savingEdit,setSavingEdit]=useState(false);
   const merchant=profileData?.merchant;
   const listings=listingsData?.products??[];
   const orders=ordersData?.orders??[];
   const threats=threatsData?.threats??[];
+
+  const resubmitApplication=async(event:React.FormEvent)=>{
+    event.preventDefault();setResubmitting(true);setError('');setFeedback('');
+    try{
+      await api('/merchant/resubmit',{method:'POST',body:JSON.stringify(resubmit)});
+      await client.invalidateQueries({queryKey:['merchant-me']});
+      setFeedback('Application resubmitted and returned to pending review.');
+    }catch(e){setError(e instanceof Error?e.message:'Application could not be resubmitted.');}
+    finally{setResubmitting(false);}
+  };
+  const startEdit=(item:Listing)=>{
+    setEditing(item.id??item._id??null);
+    setEditForm({name:item.name,brand:item.brand,category:item.category,hsCode:item.hsCode,priceUsd:String(item.priceUsd),imageUrl:item.imageUrl??''});
+  };
+  const saveEdit=async(event:React.FormEvent)=>{
+    event.preventDefault();if(!editing)return;setSavingEdit(true);setError('');setFeedback('');
+    try{
+      await api('/merchant/listings/'+encodeURIComponent(editing),{method:'PATCH',body:JSON.stringify({
+        name:editForm.name,brand:editForm.brand,category:editForm.category,hsCode:editForm.hsCode,
+        priceCents:Math.round(Number(editForm.priceUsd)*100),imageUrl:editForm.imageUrl||null
+      })});
+      setEditing(null);setFeedback('Listing updated.');
+      await Promise.all([client.invalidateQueries({queryKey:['merchant-listings']}),client.invalidateQueries({queryKey:['catalog']})]);
+    }catch(e){setError(e instanceof Error?e.message:'Listing could not be updated.');}
+    finally{setSavingEdit(false);}
+  };
+  const archive=async(item:Listing)=>{
+    const id=item.id??item._id;if(!id)return;
+    if(!window.confirm('Archive '+item.sku+'? This hides the listing but preserves its order and audit history.'))return;
+    setBusy(true);setError('');setFeedback('');
+    try{
+      await api('/merchant/listings/'+encodeURIComponent(id)+'/archive',{method:'POST'});
+      setFeedback(item.sku+' was archived.');
+      await Promise.all([client.invalidateQueries({queryKey:['merchant-listings']}),client.invalidateQueries({queryKey:['catalog']})]);
+    }catch(e){setError(e instanceof Error?e.message:'Listing could not be archived.');}
+    finally{setBusy(false);}
+  };
   const submit=async(event:React.FormEvent)=>{
     event.preventDefault();setBusy(true);setError('');setFeedback('');
     try{
@@ -40,13 +79,32 @@ export function MerchantDashboardPage(){
   return <div className="dashboard-page">
     <div className="dashboard-page-heading"><div><span className="eyebrow">MERCHANT WORKSPACE</span><h1>Your business, <em>in view.</em></h1><p>Manage your own listings, stock, purchases and product-level signals.</p></div><span className="mini-tag"><Building2 size={14}/> {merchant?.status??'Profile unavailable'}</span></div>
     {merchant?.status==='pending'&&<div className="dashboard-inline-note"><ShieldAlert size={17}/> Your merchant application is pending. New products are private drafts until an administrator approves the application.</div>}
-    {merchant?.status==='rejected'&&<div className="form-error" role="alert">Application rejected: {merchant.rejectionReason??'Contact an administrator for the decision reason.'}</div>}
+    {merchant?.status==='rejected'&&<section className="panel">
+      <div className="panel-heading"><div><span className="eyebrow">APPLICATION DECISION</span><h2>Resubmit merchant application</h2></div><ShieldAlert/></div>
+      <p className="form-error" role="alert">Previous application rejected: {merchant.rejectionReason??'No reason was recorded.'}</p>
+      <form className="merchant-listing-form" onSubmit={resubmitApplication}>
+        <label>Business name<input required minLength={2} maxLength={120} value={resubmit.businessName} onChange={e=>setResubmit(v=>({...v,businessName:e.target.value}))}/></label>
+        <label>Business country<select value={resubmit.country} onChange={e=>setResubmit(v=>({...v,country:e.target.value}))}>{['US','UK','EU','AE','PK','SG'].map(code=><option key={code} value={code}>{code}</option>)}</select></label>
+        <button className="button button-primary" disabled={resubmitting}>{resubmitting?'Submitting…':'Resubmit for review'}</button>
+      </form>
+    </section>}
     <div className="kpi-grid">
       <article className="kpi-card"><div><span>Your listings</span><PackagePlus/></div><strong>{listings.length}</strong><small>{listings.filter(p=>p.listingStatus==='published').length} published · {listings.filter(p=>p.listingStatus==='draft').length} drafts</small></article>
       <article className="kpi-card"><div><span>Your purchases</span><ClipboardList/></div><strong>{orders.length}</strong><small>Orders containing your SKUs</small></article>
       <article className="kpi-card kpi-highlight"><div><span>Open SKU threats</span><ShieldAlert/></div><strong>{threats.length}</strong><small>Read-only visibility · no threat resolution permission</small></article>
     </div>
-    <section className="panel"><div className="panel-heading"><div><span className="eyebrow">MERCHANT CATALOG</span><h2>Your listings</h2></div><span className="mini-tag">{listings.length} records</span></div><div className="table-scroll"><table className="data-table"><thead><tr><th>Product</th><th>SKU</th><th>Listing state</th><th>Stock</th></tr></thead><tbody>{listings.map((item,i)=><tr key={item.id??item._id??i}><td><b>{item.name}</b><small>{item.brand} · {item.category}</small></td><td>{item.sku}</td><td><span className="order-state">{item.listingStatus}</span></td><td>{item.stock}</td></tr>)}{!listings.length&&<tr><td colSpan={4} className="empty-table">No merchant listings yet.</td></tr>}</tbody></table></div></section>
+    <section className="panel"><div className="panel-heading"><div><span className="eyebrow">MERCHANT CATALOG</span><h2>Your listings</h2></div><span className="mini-tag">{listings.length} records</span></div>
+      {editing&&<form className="merchant-listing-form" onSubmit={saveEdit}>
+        <label>Product name<input required minLength={2} maxLength={160} value={editForm.name} onChange={e=>setEditForm(v=>({...v,name:e.target.value}))}/></label>
+        <label>Brand<input required minLength={2} maxLength={100} value={editForm.brand} onChange={e=>setEditForm(v=>({...v,brand:e.target.value}))}/></label>
+        <label>Category<select value={editForm.category} onChange={e=>setEditForm(v=>({...v,category:e.target.value}))}><option>Audio and Studio</option><option>Precision Horology</option><option>Edge Computing</option><option>Optics and Gear</option></select></label>
+        <label>HS code<input required value={editForm.hsCode} onChange={e=>setEditForm(v=>({...v,hsCode:e.target.value}))}/></label>
+        <label>Price (USD)<input required type="number" min="0.01" step="0.01" value={editForm.priceUsd} onChange={e=>setEditForm(v=>({...v,priceUsd:e.target.value}))}/></label>
+        <label>Image URL (optional)<input type="url" value={editForm.imageUrl} onChange={e=>setEditForm(v=>({...v,imageUrl:e.target.value}))}/></label>
+        <button className="button button-primary" disabled={savingEdit}>{savingEdit?'Saving…':'Save listing changes'}</button><button type="button" className="button button-outline" onClick={()=>setEditing(null)}>Cancel</button>
+      </form>}
+      <div className="table-scroll"><table className="data-table"><thead><tr><th>Product</th><th>SKU</th><th>Listing state</th><th>Stock</th><th>Actions</th></tr></thead><tbody>{listings.map((item,i)=><tr key={item.id??item._id??i}><td><b>{item.name}</b><small>{item.brand} · {item.category}</small></td><td>{item.sku}</td><td><span className="order-state">{item.listingStatus}</span></td><td>{item.stock}</td><td>{merchant?.status!=='rejected'&&item.listingStatus!=='archived'&&<div className="admin-actions"><button className="button button-outline" disabled={!!busy||savingEdit} onClick={()=>startEdit(item)}>Edit</button><button className="button button-outline" disabled={!!busy||savingEdit} onClick={()=>void archive(item)}>Archive</button></div>}</td></tr>)}{!listings.length&&<tr><td colSpan={5} className="empty-table">No merchant listings yet.</td></tr>}</tbody></table></div>
+    </section>
     <section className="panel"><div className="panel-heading"><div><span className="eyebrow">LISTING SUBMISSION</span><h2>Create a product listing</h2></div><span className="mini-tag">Owned merchant records only</span></div>
       {feedback&&<p className="success-message">{feedback}</p>}{error&&<p className="form-error" role="alert">{error}</p>}
       <form className="merchant-listing-form" onSubmit={submit}>
