@@ -328,10 +328,26 @@ async function main(): Promise<void> {
       }
     }
 
-    for (const collection of plan) {
+    for (const collection of plan.filter(item => item.name !== 'auditLog')) {
       const actual = await database.collection(collection.name).countDocuments({ migratedFrom: 'sqlite-v1' });
       if (actual !== collection.documents.length) {
         throw new Error('Document count mismatch for ' + collection.name + ': expected ' + collection.documents.length + ', found ' + actual);
+      }
+    }
+
+    const auditExpected = plan.find(item => item.name === 'auditLog')!.documents.length;
+    if (auditExpected > 0) {
+      const auditCheckUri = requiredEnv('MONGODB_AUDIT_MIGRATION_URI');
+      const auditCheckClient = new MongoClient(auditCheckUri, { appName: 'VerifyMart-Audit-Migration-Verify' });
+      try {
+        await auditCheckClient.connect();
+        const auditActual = await auditCheckClient.db(targetName).collection('auditLog')
+          .countDocuments({ migratedFrom: 'sqlite-v1' });
+        if (auditActual !== auditExpected) {
+          throw new Error('Document count mismatch for auditLog: expected ' + auditExpected + ', found ' + auditActual);
+        }
+      } finally {
+        await auditCheckClient.close();
       }
     }
     console.log('Migration count verification passed for all eleven collections.');
