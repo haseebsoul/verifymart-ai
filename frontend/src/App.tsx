@@ -12,7 +12,8 @@ const NotFoundPage=lazy(()=>import('./pages/SystemPages').then(m=>({default:m.No
 const ForbiddenPage=lazy(()=>import('./pages/SystemPages').then(m=>({default:m.ForbiddenPage})));
 const DashboardLayout=lazy(()=>import('./dashboard/DashboardLayout').then(m=>({default:m.DashboardLayout})));
 const OverviewPage=lazy(()=>import('./dashboard/OverviewPage').then(m=>({default:m.OverviewPage})));
-const MerchantDashboardPage=lazy(()=>import('./dashboard/MerchantDashboardPage').then(m=>({default:m.MerchantDashboardPage})));\nconst ShopperDashboardPage=lazy(()=>import('./dashboard/ShopperDashboardPage').then(m=>({default:m.ShopperDashboardPage})));
+const MerchantDashboardPage=lazy(()=>import('./dashboard/MerchantDashboardPage').then(m=>({default:m.MerchantDashboardPage})));;
+const ShopperDashboardPage=lazy(()=>import('./dashboard/ShopperDashboardPage').then(m=>({default:m.ShopperDashboardPage})));
 const TopologyPage=lazy(()=>import('./dashboard/TopologyPage').then(m=>({default:m.TopologyPage})));
 const ThreatsPage=lazy(()=>import('./dashboard/ThreatsPage').then(m=>({default:m.ThreatsPage})));
 const ActivityPage=lazy(()=>import('./dashboard/ActivityPage').then(m=>({default:m.ActivityPage})));
