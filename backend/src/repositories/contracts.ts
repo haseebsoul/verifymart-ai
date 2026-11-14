@@ -13,6 +13,7 @@ export interface UserDocument extends Document {
   failedLogins: number;
   lockedUntil: Date | null;
   lastLogin: Date | null;
+  disabledAt?: Date | null;
   createdAt: Date;
   refreshSessions: Array<{ tokenHash: string; expiresAt: Date; createdAt: Date }>;
 }
