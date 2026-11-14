@@ -80,7 +80,7 @@ export async function verifyAtlasQuery(query: string): Promise<AtlasVerification
         factory: 'Application-generated verification record — not a manufacturer certificate',
         batchHash: product.batchHash,
         hsCode: product.hsCode,
-        issuedAt: (events[0]?.occurredAt ?? product.createdAt).toISOString()
+        issuedAt: (events[0]?.occurredAt ?? product.createdAt ?? new Date()).toISOString()
       },
       timeline: events.map(event => ({
         id: event.id,
