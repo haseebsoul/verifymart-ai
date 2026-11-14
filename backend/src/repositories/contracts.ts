@@ -56,8 +56,8 @@ export interface ProductDocument {
   merchantId: string | null;
   managedBy: 'merchant' | 'platform';
   provenanceEvents: ProvenanceDocument[];
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   migratedFrom?: 'sqlite-v1';
 }
 
@@ -94,7 +94,7 @@ export interface OrderDocument {
   _id: string;
   idempotencyKey: string;
   requestHash: string;
-  userId: string;
+  userId: string | null;
   destination: string;
   items: OrderItemDocument[];
   quote: {
