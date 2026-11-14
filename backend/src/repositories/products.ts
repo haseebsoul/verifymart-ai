@@ -1,4 +1,4 @@
-import type { Collection, UpdateFilter } from 'mongodb';
+import type { Collection } from 'mongodb';
 import { getAtlasDb } from '../infrastructure/atlas.js';
 import type { ProductDocument, ProvenanceDocument } from './contracts.js';
 
@@ -7,13 +7,43 @@ export class MongoProductRepository {
     return getAtlasDb().collection<ProductDocument>('products');
   }
 
+  private async activeApprovedMerchantIds(): Promise<string[]> {
+    const database = getAtlasDb();
+    const approved = await database.collection('merchants')
+      .find({ status: 'approved' }, { projection: { _id: 1, userId: 1 } }).toArray();
+    if (!approved.length) return [];
+    const users = await database.collection('users')
+      .find({
+        _id: { $in: approved.map(merchant => String(merchant.userId)) },
+        role: 'merchant',
+        $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+      }, { projection: { _id: 1 } }).toArray();
+    const activeIds = new Set(users.map(user => String(user._id)));
+    return approved
+      .filter(merchant => activeIds.has(String(merchant.userId)))
+      .map(merchant => String(merchant._id));
+  }
+
   async findPublic(): Promise<ProductDocument[]> {
-    const merchants = getAtlasDb().collection('merchants');
-    const approvedMerchantIds = await merchants.distinct<string>('_id', { status: 'approved' });
+    const approvedMerchantIds = await this.activeApprovedMerchantIds();
     return this.products().find({
       listingStatus: 'published',
-      $or: [{ merchantId: null, managedBy: 'platform' }, { merchantId: { $in: approvedMerchantIds } }]
+      $or: [
+        { merchantId: null, managedBy: 'platform' },
+        { merchantId: { $in: approvedMerchantIds }, managedBy: 'merchant' }
+      ]
     }).sort({ category: 1, name: 1 }).toArray();
+  }
+
+  async findPublicById(id: string): Promise<ProductDocument | null> {
+    const product = await this.products().findOne({
+      _id: id,
+      listingStatus: 'published'
+    });
+    if (!product) return null;
+    if (!product.merchantId) return product;
+    const allowed = await this.activeApprovedMerchantIds();
+    return allowed.includes(product.merchantId) ? product : null;
   }
 
   async findById(id: string): Promise<ProductDocument | null> {
@@ -23,13 +53,17 @@ export class MongoProductRepository {
   async findBySkuOrBatch(query: string): Promise<ProductDocument | null> {
     const normalized = query.trim();
     if (!normalized || normalized.length > 180) return null;
-    return this.products().findOne({
+    const product = await this.products().findOne({
+      listingStatus: 'published',
       $or: [
         { sku: { $regex: '^' + escapeRegex(normalized) + '$', $options: 'i' } },
         { batchHash: { $regex: '^' + escapeRegex(normalized) + '$', $options: 'i' } },
         { _id: normalized }
       ]
     });
+    if (!product || !product.merchantId) return product;
+    const allowed = await this.activeApprovedMerchantIds();
+    return allowed.includes(product.merchantId) ? product : null;
   }
 
   async findOwned(id: string, merchantId: string): Promise<ProductDocument | null> {
@@ -53,7 +87,7 @@ export class MongoProductRepository {
   async appendProvenanceEvent(id: string, event: ProvenanceDocument): Promise<boolean> {
     const result = await this.products().updateOne(
       { _id: id },
-      { $push: { provenanceEvents: { $each: [event], $slice: -50 } }, $set: { updatedAt: event.occurredAt } } as unknown as UpdateFilter<ProductDocument>
+      { $push: { provenanceEvents: { $each: [event], $slice: -50 } }, $set: { updatedAt: event.occurredAt } } as never
     );
     return result.modifiedCount === 1;
   }
