@@ -1,0 +1,54 @@
+# VerifyMart AI — Project Implementation Audit
+
+**Audit date:** 2026-11-14  
+**Repository:** `haseebsoul/verifymart-ai`  
+**Audited base:** `main` at `872b14c4f9bd58ac8ed9d714ab59684872434952`  
+**Specification:** VerifyMart AI — SRS and SRE Plan, 46 pages; Sections 18–23 supersede conflicting assumptions in Sections 1–17.
+
+## Executive finding
+
+The repository is a working-looking React/Express prototype, but it is not yet the product described by the current specification. Its application persistence path is SQLite, its authenticated role model is `user/operator/admin`, and the existing API does not implement merchant onboarding or merchant-owned resources. A provisioned Atlas project and M0 cluster are present, but the checked-in runtime does not connect to Atlas.
+
+The audit was performed against the tracked repository tree and the actual route, service, middleware, seed, shared-schema, and frontend page implementations. A UI page or button is not counted as implemented unless the path reaches a protected API and persistence operation.
+
+## Findings by specification area
+
+| Area | Observed implementation | Gap / risk | Priority |
+|---|---|---|---|
+| Architecture and persistence | Express routes and domain services call synchronous `better-sqlite3` directly through `backend/src/db.ts`. | The app has no MongoDB Node driver dependency or Atlas connection path. SQL coupling is spread through routes, services, seed and telemetry, so the required per-entity repository boundary is absent. | P0 |
+| Atlas resources | Live project `VerifyMart AI` and cluster `VerifyMartCluster` exist (AWS `AP_SOUTH_1`, M0, MongoDB 8.0.37). The live `verifymart_v14` database has 31 collections. | Existing collection names include legacy/plural variants (`merchantProfiles`, `trustLedgers`, `auditLogs`, etc.), not the exact 11-collection Section 20.2 model. The only listed Atlas DB user is `verifymart_app`, with `readWrite` on `verifymart_v14`; it is not scoped to the new environment database names and is not least-privilege for append-only audit. | P0 |
+| Data model and money | SQLite schema stores money as integer cents; product and order timestamps are ISO strings. | MongoDB BSON Date / Int64 or Decimal128 semantics, unique indexes, capped provenance history, and a DB-enforced append-only audit credential are not implemented in app code. | P0 |
+| Authentication | bcrypt cost 12; short-lived access JWT; refresh token is httpOnly, SameSite=Strict, rotated and stored hashed; failed-login counter locks after five failures for five minutes. | Shared schemas allow 8-character passwords, below the SRS minimum of 10. Role values are still the old three-role model. The token role is trusted until expiry rather than reloaded for every authorization decision. | P1 |
+| Server-side authorization | `authenticate` and `requireRole` exist. Admin self-role-change and self-delete are rejected server-side. | RBAC recognizes only `user/operator/admin`. There are no merchant resource-ownership checks or inventory-manager-specific permissions. Operations routes are broadly operator/admin protected; there is no same-middleware `merchantId` ownership predicate. | P0 |
+| Merchant lifecycle | No merchant registration, approval/rejection workflow, merchant profile route, or merchant-owned listing service was found in the backend. | Section 19.4 pending-to-approved onboarding, hidden pending listings, reasoned approval/rejection audit events, and Merchant/InventoryAdjustment records are missing. | P0 |
+| Catalog | Seed defines 24 products across the four required categories; public listing supports category, search, verified-only and sort. | Products have no merchant ownership or `managedBy` model. Public catalogue approval filtering is absent. The current seed runs only against SQLite. | P1 |
+| Verification and provenance | Public SKU/batch/order lookup exists; seed creates four provenance events per product; API marks results simulated. | Provenance is stored in separate SQLite tables and does not use the new Atlas product document sub-array capped at 50. The displayed factory-partner certificate text is derived from brand metadata and should not be read as independent manufacturer certification. | P1 |
+| Landed-cost calculator | Destination constants include US, UK, EU, UAE (`AE`), Pakistan and Singapore; service uses integer-cent calculations and returns `seed-tariff-v1`. | Tariffs remain seeded estimates (correctly disclosed); service depends on SQLite. Need a dedicated `tariffRules` repository and tests against the exact Section 9.4 formula after migration. | P1 |
+| Checkout and idempotency | Authenticated checkout recomputes the quote server-side, checks stock, writes order/items, decrements stock, and stores a replay response inside one SQLite transaction. Insufficient stock maps to 409. | Idempotency is in a separate SQLite table rather than a unique `orders.idempotencyKey` index. Duplicate product IDs in one request are checked line-by-line instead of aggregating total requested quantity, creating an oversell edge case. Required MongoDB multi-document transaction is absent. | P0 |
+| Escrow | Database state supports held, released, refunded and on_hold. Release/hold endpoints audit and publish events. | No refund transition endpoint or complete guarded state-transition service was found. These remain simulated states; no funds move, as required by the honesty clause. | P1 |
+| Operations console | The frontend contains nine dashboard routes: overview, topology, threats, activity, manage, rewards, reports, account and admin. Threat resolution/restock, settings, CSV audit export and user role/delete endpoints exist. | The console is an operator/admin console, not a five-role console. Inventory manager workflows and merchant listing/purchase views are absent. Some metrics/reports are hard-coded or generated from trigonometric/sample values rather than persisted measurements (for example velocity and report percentages); they must be labeled illustrative or replaced by measured data. | P1 |
+| WebSocket / telemetry | Operator/admin connection requires a valid JWT; public channel only receives a small allowlisted event set. Simulator ticks every two seconds and frames are marked simulated. | Auth roles are old; inventory-manager/merchant channel policies are missing. Hub snapshots read SQLite. Token is in the query string, which can be exposed in proxy/access logs unless those logs redact query strings. | P1 |
+| Reliability and observability | `/api/health`, `/api/ready`, request IDs, Pino HTTP logging, Helmet, CORS and API rate limiting exist. | Readiness probes SQLite, not Atlas. Prometheus `/metrics/prom`, Atlas connectivity/readiness and the complete SRE alert/runbook/restore suite are not present in code/docs. | P1 |
+| Frontend design and accessibility | React 18, Vite, TypeScript, Tailwind and Framer Motion are present; product image fallback exists. | Full axe journey coverage and WCAG 2.2 AA acceptance evidence were not found. Role navigation still assumes only shopper/user, operator and admin. README references `assets/dashboard-preview.png`, which is absent from the tracked tree. | P2 |
+| Testing | Three backend domain tests cover deterministic duty, seeded verification and SQLite idempotent checkout; frontend has unit tests and a small Playwright smoke test. CI workflow requests typecheck/build/test/lint/color lint. | No broad Supertest endpoint/negative-RBAC suite, no five-role cross-access tests, no specified end-to-end merchant/operator/admin journeys, no axe scan, and no demonstrated 80% coverage on core domain services. Test and workflow results must be obtained from actual execution, not inferred from configuration. | P0 |
+| Standalone documentation | `docs/SRE_PLAN.md`, `docs/MONGODB_ATLAS_PROVISIONING.md` and requirements traceability exist. | Missing required `PROJECT_AUDIT.md` (this file), full `ROLE_PERMISSION_MATRIX.md`, `INCIDENT_RUNBOOKS.md`, `BACKUP_RESTORE.md` and `SECURITY_MODEL.md`. Existing SRE content must be reconciled to Atlas and five roles. Section 21.4 checkout sequence diagram is explicitly still open in Section 23. | P1 |
+
+## Verified Atlas boundary
+
+The Atlas management connection successfully inspected the project and cluster. The cluster is an M0 deployment in Mumbai and is not evidence of a production HA/backup configuration. The existing database is `verifymart_v14` and contains legacy data; it must not be dropped, reset or renamed during this work. The currently listed app DB user has `readWrite` on that legacy database only. No app runtime secret or secret-manager URI was supplied by the repository, and this audit does not place credentials in Git.
+
+A separate `verifymart_dev` database and database principal are required for isolated development. Staging and production require their own approved environments, backup/PITR configuration and app credentials. Do not route the app to `verifymart_v14` by default.
+
+## Implementation order and acceptance gates
+
+1. Add the native MongoDB driver, explicit environment configuration, connection/readiness lifecycle, 11 collection repositories and declared indexes. Keep SQLite/JSON migration adapters isolated behind repository interfaces; never silently fall back to SQLite.
+2. Add a one-time, dry-run-first migration that preserves source IDs and marks imported documents `migratedFrom: "sqlite-v1"`; compare per-collection source/document counts before cutover.
+3. Implement the five-role enum and middleware contract, including merchant ownership in the same authorization middleware and admin approval workflow.
+4. Refactor checkout to a transaction over stock and order writes, a unique order idempotency key, duplicate-key replay handling and aggregated product quantities.
+5. Complete role-aware routes/UI, refund transition, reports, WebSocket filtering and demo/simulation labels.
+6. Extract/update the standalone security, SRE, runbook, backup/restore and permission documents from the authoritative SRS; add the Section 21.4 checkout sequence diagram.
+7. Run the specified build, color lint, unit/API/E2E/accessibility/security gates and record actual CI output. No production cutover until staging acceptance and data counts match.
+
+## Audit limitations
+
+This audit reads source and repository metadata on GitHub and inspects Atlas project/cluster/database metadata. A network attempt to clone GitHub into the execution container failed because the container could not resolve `github.com`; consequently no local npm build, test, or browser run is claimed here. The branch/PR CI workflow is the appropriate executable verification path once changes are pushed. Atlas collection names and database user scope were inspected live; this audit did not mutate the legacy `verifymart_v14` database.
