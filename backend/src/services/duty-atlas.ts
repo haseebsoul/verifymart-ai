@@ -36,7 +36,9 @@ export function roundRateHalfUp(valueCents: number, rateBps: number): number {
   if (!Number.isSafeInteger(valueCents) || !Number.isSafeInteger(rateBps) || valueCents < 0 || rateBps < 0) {
     throw new Error('Duty calculation requires non-negative integer cents and basis points.');
   }
-  const result = Math.floor((valueCents * rateBps) / 10_000 + 0.5);
+  const numerator = BigInt(valueCents) * BigInt(rateBps);
+  const rounded = (numerator + 5_000n) / 10_000n;
+  const result = Number(rounded);
   if (!Number.isSafeInteger(result)) throw new Error('Duty calculation exceeds the safe integer range.');
   return result;
 }
@@ -97,6 +99,7 @@ export async function calculateAtlasDuty(
     }
     const rule = tariffRules.find((candidate) => candidate.hsPrefix !== '' && product.hsCode.startsWith(candidate.hsPrefix)) ?? baseRule;
     const valueCents = centsFromLong(product.priceCents) * quantity;
+    if (!Number.isSafeInteger(valueCents)) throw new Error('Checkout line value exceeds the safe integer range.');
     const dutyCents = roundRateHalfUp(valueCents, rule.dutyRateBps);
     const carrierCents = carrierFeeCents[destinationCountry] * quantity;
     const vatBase = valueCents + dutyCents + (rule.vatIncludesCarrier ? carrierCents : 0);
@@ -116,7 +119,13 @@ export async function calculateAtlasDuty(
     totalDutyCents += dutyCents;
     totalVatCents += vatCents;
     totalCarrierCents += carrierCents;
+    if (![subtotalCents,totalDutyCents,totalVatCents,totalCarrierCents].every(Number.isSafeInteger)) {
+      throw new Error('Checkout quote exceeds the safe integer range.');
+    }
   }
+
+  const totalCents = subtotalCents + totalDutyCents + totalVatCents + totalCarrierCents;
+  if (!Number.isSafeInteger(totalCents)) throw new Error('Checkout total exceeds the safe integer range.');
 
   return {
     destinationCountry,
@@ -126,7 +135,7 @@ export async function calculateAtlasDuty(
     duty: dollars(totalDutyCents),
     vat: dollars(totalVatCents),
     carrierFee: dollars(totalCarrierCents),
-    total: dollars(subtotalCents + totalDutyCents + totalVatCents + totalCarrierCents),
+    total: dollars(totalCents),
     source: baseRule.source,
     formulaVersion: 'landed-cost-v1',
     computedAt: new Date().toISOString()
