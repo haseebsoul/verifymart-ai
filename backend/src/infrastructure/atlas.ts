@@ -1,22 +1,9 @@
-import {
-  Db,
-  MongoClient,
-  type Collection,
-  type Document
-} from 'mongodb';
+import { Db, MongoClient, type Collection, type Document } from 'mongodb';
+import { ensureAtlasIndexes } from './indexes.js';
 
 export const ATLAS_COLLECTIONS = [
-  'users',
-  'merchants',
-  'products',
-  'hubs',
-  'tariffRules',
-  'orders',
-  'threats',
-  'inventoryAdjustments',
-  'auditLog',
-  'settings',
-  'trustLedger'
+  'users', 'merchants', 'products', 'hubs', 'tariffRules', 'orders',
+  'threats', 'inventoryAdjustments', 'auditLog', 'settings', 'trustLedger'
 ] as const;
 
 export type AtlasCollectionName = (typeof ATLAS_COLLECTIONS)[number];
@@ -56,12 +43,20 @@ export async function connectAtlas(): Promise<Db> {
     const database = client.db(databaseName);
     await database.command({ ping: 1 });
 
-    const existing = new Set(await database.listCollections({}, { nameOnly: true }).map((item) => item.name).toArray());
-    const missing = ATLAS_COLLECTIONS.filter((name) => !existing.has(name));
-    if (missing.length > 0) {
-      throw new Error('Atlas database is missing required collections: ' + missing.join(', '));
+    const existing = new Set(
+      await database.listCollections({}, { nameOnly: true }).map((item) => item.name).toArray()
+    );
+    for (const name of ATLAS_COLLECTIONS) {
+      if (existing.has(name)) continue;
+      if (name === 'auditLog') {
+        throw new Error('auditLog must be provisioned by the deployment principal before app startup.');
+      }
+      await database.createCollection(name);
     }
 
+    // Indexing auditLog requires a deployment credential. Runtime credentials
+    // must not have update/remove (or schema-management) privileges on that collection.
+    await ensureAtlasIndexes(database);
     appClient = client;
     appDb = database;
     return database;
@@ -72,9 +67,9 @@ export async function connectAtlas(): Promise<Db> {
 }
 
 /**
- * The audit writer deliberately uses a separate credential. Atlas must grant
- * this principal insert/find on auditLog only; it must not have update/remove.
- * The normal application principal is not used for audit inserts.
+ * The audit writer uses a distinct Atlas principal. Grant it find/insert on
+ * auditLog only; do not grant update/remove. The ordinary app URI must not be
+ * used to append audit entries.
  */
 export async function connectAuditLog(): Promise<Collection<Document>> {
   if (auditDb) return auditDb.collection('auditLog');
@@ -88,6 +83,7 @@ export async function connectAuditLog(): Promise<Collection<Document>> {
     await client.connect();
     const database = client.db(databaseName);
     await database.command({ ping: 1 });
+    // This read confirms that the URI can access the collection without testing writes.
     await database.collection('auditLog').findOne({}, { projection: { _id: 1 } });
     auditClient = client;
     auditDb = database;
