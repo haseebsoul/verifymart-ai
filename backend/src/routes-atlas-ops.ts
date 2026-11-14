@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
+import { Long } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasClient, getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
