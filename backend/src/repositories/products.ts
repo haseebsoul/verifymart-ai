@@ -1,4 +1,4 @@
-import type { Collection } from 'mongodb';
+import type { Collection, UpdateFilter } from 'mongodb';
 import { getAtlasDb } from '../infrastructure/atlas.js';
 import type { ProductDocument, ProvenanceDocument } from './contracts.js';
 
@@ -53,7 +53,7 @@ export class MongoProductRepository {
   async appendProvenanceEvent(id: string, event: ProvenanceDocument): Promise<boolean> {
     const result = await this.products().updateOne(
       { _id: id },
-      { $push: { provenanceEvents: { $each: [event], $slice: -50 } }, $set: { updatedAt: event.occurredAt } }
+      { $push: { provenanceEvents: { $each: [event], $slice: -50 } }, $set: { updatedAt: event.occurredAt } } as UpdateFilter<ProductDocument>
     );
     return result.modifiedCount === 1;
   }
