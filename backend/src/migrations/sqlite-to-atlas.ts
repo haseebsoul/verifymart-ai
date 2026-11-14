@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Long, MongoClient, type Document, type AnyBulkWriteOperation } from 'mongodb';
 
 type Row = Record<string, unknown>;
@@ -28,7 +29,7 @@ function toLong(value: unknown): Long {
   return Long.fromNumber(number);
 }
 
-function toJsonObject(value: unknown, context: string): Record<string, unknown> {
+export function toJsonObject(value: unknown, context: string): Record<string, unknown> {
   if (value === null || value === undefined || value === '') return {};
   if (typeof value !== 'string') throw new Error('Invalid JSON source value for ' + context + '; migration aborted to avoid discarding data.');
   try {
@@ -58,7 +59,7 @@ function mustHaveTables(tables: Set<string>): void {
   if (missing.length) throw new Error('Source SQLite file is missing required tables: ' + missing.join(', '));
 }
 
-function buildCollections(database: Database.Database): TargetCollection[] {
+export function buildCollections(database: Database.Database): TargetCollection[] {
   const tables = getTableNames(database);
   mustHaveTables(tables);
   const users = sourceRows(database, tables, 'users');
@@ -322,6 +323,28 @@ async function main(): Promise<void> {
           '). No migration writes were performed; use a clean staging target or reconcile the conflicts manually.');
       }
     }
+    const uniqueKeys: Record<string, Array<string[]>> = {
+      users: [['email']],
+      products: [['sku'], ['batchHash']],
+      hubs: [['code']],
+      tariffRules: [['hsPrefix', 'country']],
+      orders: [['idempotencyKey']],
+      settings: [['key']]
+    };
+    for (const collection of appPlan) {
+      const keys = uniqueKeys[collection.name] ?? [];
+      for (const document of collection.documents) {
+        for (const fields of keys) {
+          const filter = Object.fromEntries(fields.map(field => [field, document[field]]));
+          const existing = await database.collection(collection.name).findOne(filter, { projection: { _id: 1 } });
+          if (existing && String(existing._id) !== String(document._id)) {
+            throw new Error('Migration unique-key conflict in ' + collection.name + ' for ' +
+              fields.join('+') + '; no migration writes were performed.');
+          }
+        }
+      }
+    }
+
     const auditDocuments = plan.find((item) => item.name === 'auditLog')!.documents;
     if (auditDocuments.length) {
       const auditUri = requiredEnv('MONGODB_AUDIT_MIGRATION_URI');
@@ -395,8 +418,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : 'Unknown migration failure';
-  console.error('Atlas migration failed: ' + message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Unknown migration failure';
+    console.error('Atlas migration failed: ' + message);
+    process.exitCode = 1;
+  });
+}
