@@ -60,7 +60,7 @@ const imageIds = [
   '1516035069371-29a1b244cc32','1498050108023-c5249f4df085','1523275335684-37898b6baf30',
   '1511379938547-c1f69419868d','1516575150278-77136aed6920'
 ];
-const stages = ['Factory-stage sample','Vault intake sample','Customs pre-clearance sample','Dispatch sample'];
+const stages = ['Factory signed','Vault received','Customs pre-cleared','Dispatched'];
 const stageHubs = ['HUB-ZRH','HUB-DXB','HUB-KHI','HUB-SIN'];
 
 function required(name:string):string {
@@ -104,6 +104,7 @@ async function seed():Promise<void> {
             hubId:step===0?String(hub):(stageHubs[step] ?? 'HUB-SIN'),
             occurredAt,
             hash:createHash('sha256').update(batchHash+':'+stage+':'+String(hub)+':'+occurredAt.toISOString()).digest('hex'),
+            simulated:true,
             simulated:true
           };
         });
