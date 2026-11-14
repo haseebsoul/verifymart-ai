@@ -66,9 +66,18 @@ atlasAdminRouter.patch('/admin/hubs/:id', ...adminOnly, asyncHandler(async (req,
   const id = req.params.id;
   if (!id) { res.status(404).json({ error: { code: 'HUB_NOT_FOUND', message: 'Hub was not found.', requestId: req.requestId } }); return; }
   const input = hubUpdateSchema.parse(req.body);
+  const changes: Partial<Pick<HubDocument, 'name' | 'x' | 'y' | 'latencyMs' | 'status' | 'queueDepth'>> & { updatedAt: Date } = {
+    updatedAt: new Date()
+  };
+  if (input.name !== undefined) changes.name = input.name;
+  if (input.x !== undefined) changes.x = input.x;
+  if (input.y !== undefined) changes.y = input.y;
+  if (input.latencyMs !== undefined) changes.latencyMs = input.latencyMs;
+  if (input.status !== undefined) changes.status = input.status;
+  if (input.queueDepth !== undefined) changes.queueDepth = input.queueDepth;
   const hub = await getAtlasDb().collection<HubDocument>('hubs').findOneAndUpdate(
     { _id: id },
-    { $set: { ...input, updatedAt: new Date() } },
+    { $set: changes },
     { returnDocument: 'after' }
   );
   if (!hub) { res.status(404).json({ error: { code: 'HUB_NOT_FOUND', message: 'Hub was not found.', requestId: req.requestId } }); return; }
@@ -106,9 +115,13 @@ atlasAdminRouter.patch('/admin/tariff-rules/:id', ...adminOnly, asyncHandler(asy
   const id = req.params.id;
   if (!id) { res.status(404).json({ error: { code: 'TARIFF_RULE_NOT_FOUND', message: 'Tariff rule was not found.', requestId: req.requestId } }); return; }
   const input = tariffUpdateSchema.parse(req.body);
+  const changes: Partial<Pick<TariffRuleDocument, 'dutyRateBps' | 'vatRateBps' | 'vatIncludesCarrier'>> = {};
+  if (input.dutyRateBps !== undefined) changes.dutyRateBps = input.dutyRateBps;
+  if (input.vatRateBps !== undefined) changes.vatRateBps = input.vatRateBps;
+  if (input.vatIncludesCarrier !== undefined) changes.vatIncludesCarrier = input.vatIncludesCarrier;
   const rule = await getAtlasDb().collection<TariffRuleDocument>('tariffRules').findOneAndUpdate(
     { _id: id },
-    { $set: input },
+    { $set: changes },
     { returnDocument: 'after' }
   );
   if (!rule) { res.status(404).json({ error: { code: 'TARIFF_RULE_NOT_FOUND', message: 'Tariff rule was not found.', requestId: req.requestId } }); return; }
