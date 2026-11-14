@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { Router } from 'express';
+import { Router, type Response } from 'express';
+import type { Collection } from 'mongodb';
 import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -66,7 +67,7 @@ function cookieOptions() {
   };
 }
 
-function invalidCredentials(res: Parameters<typeof atlasAuthRouter.post>[1] extends never ? never : import('express').Response, requestId?: string) {
+function invalidCredentials(res: Response, requestId?: string) {
   res.status(401).json({
     error: {
       code: 'INVALID_CREDENTIALS',
@@ -76,7 +77,7 @@ function invalidCredentials(res: Parameters<typeof atlasAuthRouter.post>[1] exte
   });
 }
 
-async function newRefreshSession(userId: string, res: import('express').Response, userCollection: ReturnType<typeof getAtlasDb>['collection']) {
+async function newRefreshSession(userId: string, res: Response, userCollection: Collection<UserDocument>) {
   const token = randomBytes(48).toString('base64url');
   const now = new Date();
   await userCollection.updateOne(
@@ -162,8 +163,8 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
   const users = getAtlasDb().collection<UserDocument>('users');
   const tokenHash = hashToken(refresh);
   const user = await users.findOne({
-    disabledAt: { $in: [null, undefined] },
-    'refreshSessions.tokenHash': tokenHash
+    'refreshSessions.tokenHash': tokenHash,
+    $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
   });
 
   if (!user) {
@@ -183,7 +184,7 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
   const nextToken = randomBytes(48).toString('base64url');
   const now = new Date();
   const rotated = await users.updateOne(
-    { _id: user._id, 'refreshSessions.tokenHash': tokenHash, disabledAt: { $in: [null, undefined] } },
+    { _id: user._id, 'refreshSessions.tokenHash': tokenHash, $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }] },
     {
       $pull: { refreshSessions: { tokenHash } },
       $push: {
