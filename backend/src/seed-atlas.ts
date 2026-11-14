@@ -92,38 +92,38 @@ async function seed():Promise<void> {
     }
 
     const products=database.collection<ProductDocument>('products');
-    const productCount=await products.countDocuments();
-    if(productCount===0) {
-      const eventDate=Date.now();
-      const records:ProductDocument[] = catalog.map((row,index)=>{
-        const [sku,name,brand,category,hsCode,price,duty,stock,score,hub]=row;
-        const skuText=String(sku), nameText=String(name), brandText=String(brand);
-        const hs=String(hsCode), priceUsd=Number(price), stockCount=Number(stock), authenticity=Number(score);
-        const batchHash=createHash('sha256').update(JSON.stringify({sku:skuText,name:nameText,brand:brandText,hsCode:hs,price:priceUsd})).digest('hex');
-        const id=productId(skuText);
-        const events:ProvenanceDocument[]=stages.map((stage,step)=>{
-          const occurredAt=new Date(eventDate-(4-step)*86_400_000-index*60_000);
-          return {
-            id:'evt_'+skuText.toLowerCase()+'_'+(step+1),
-            stage,
-            hubId:step===0?String(hub):(stageHubs[step] ?? 'HUB-SIN'),
-            occurredAt,
-            hash:createHash('sha256').update(batchHash+':'+stage+':'+String(hub)+':'+occurredAt.toISOString()).digest('hex'),
-            simulated:true
-          };
-        });
-        const state=stockCount<=5?'low_stock':authenticity<93?'audit_flag':'verified';
+    const eventDate=Date.now();
+    const records:ProductDocument[] = catalog.map((row,index)=>{
+      const [sku,name,brand,category,hsCode,price,duty,stock,score,hub]=row;
+      const skuText=String(sku), nameText=String(name), brandText=String(brand);
+      const hs=String(hsCode), priceUsd=Number(price), stockCount=Number(stock), authenticity=Number(score);
+      const batchHash=createHash('sha256').update(JSON.stringify({sku:skuText,name:nameText,brand:brandText,hsCode:hs,price:priceUsd})).digest('hex');
+      const id=productId(skuText);
+      const events:ProvenanceDocument[]=stages.map((stage,step)=>{
+        const occurredAt=new Date(eventDate-(4-step)*86_400_000-index*60_000);
         return {
-          _id:id, sku:skuText, batchHash, hsCode:hs, name:nameText, brand:brandText,
-          category:String(category), priceCents:Long.fromNumber(priceUsd*100),
-          stock:stockCount, reorderThreshold:5, originHubId:String(hub),
-          authenticityScore:authenticity, slaHours:24+(index%48),
-          imageUrl:'https://images.unsplash.com/photo-'+(imageIds[index%imageIds.length] ?? imageIds[0])+'?auto=format&fit=crop&w=900&q=80',
-          status:state, listingStatus:'published', merchantId:null, managedBy:'platform',
-          provenanceEvents:events, createdAt:now, updatedAt:now
+          id:'evt_'+skuText.toLowerCase()+'_'+(step+1),
+          stage,
+          hubId:step===0?String(hub):(stageHubs[step] ?? 'HUB-SIN'),
+          occurredAt,
+          hash:createHash('sha256').update(batchHash+':'+stage+':'+String(hub)+':'+occurredAt.toISOString()).digest('hex'),
+          simulated:true
         };
       });
-      await products.insertMany(records,{ordered:true});
+      const state=stockCount<=5?'low_stock':authenticity<93?'audit_flag':'verified';
+      return {
+        _id:id, sku:skuText, batchHash, hsCode:hs, name:nameText, brand:brandText,
+        category:String(category), priceCents:Long.fromNumber(priceUsd*100),
+        stock:stockCount, reorderThreshold:5, originHubId:String(hub),
+        authenticityScore:authenticity, slaHours:24+(index%48),
+        imageUrl:'https://images.unsplash.com/photo-'+(imageIds[index%imageIds.length] ?? imageIds[0])+'?auto=format&fit=crop&w=900&q=80',
+        status:state, listingStatus:'published', merchantId:null, managedBy:'platform',
+        provenanceEvents:events, createdAt:now, updatedAt:now
+      };
+    });
+    // Re-running the seed fills missing catalogue records but never overwrites existing merchant/platform data.
+    for(const record of records) {
+      await products.updateOne({_id:record._id},{$setOnInsert:record},{upsert:true});
     }
 
     const tariffCollection=database.collection<TariffRuleDocument>('tariffRules');
