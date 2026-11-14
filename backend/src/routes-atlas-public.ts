@@ -62,10 +62,7 @@ atlasPublicRouter.get('/products/:id', asyncHandler(async (req, res) => {
     res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
     return;
   }
-  const product = await getAtlasDb().collection<ProductDocument>('products').findOne({
-    _id: productId,
-    listingStatus: 'published'
-  });
+  const product = await new MongoProductRepository().findPublicById(productId);
   if (!product) {
     res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
     return;
