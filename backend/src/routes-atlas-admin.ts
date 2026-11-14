@@ -38,6 +38,13 @@ atlasAdminRouter.patch('/admin/users/:id/role', ...adminOnly, asyncHandler(async
     res.status(404).json({ error: { code: 'USER_NOT_FOUND', message: 'User was not found.', requestId: req.requestId } });
     return;
   }
+  if (input.role === 'merchant') {
+    const merchantProfile = await getAtlasDb().collection<MerchantDocument>('merchants').findOne({ userId });
+    if (!merchantProfile) {
+      res.status(409).json({ error: { code: 'MERCHANT_PROFILE_REQUIRED', message: 'Create a merchant application/profile before assigning the merchant role.', requestId: req.requestId } });
+      return;
+    }
+  }
   const update = await users.updateOne({ _id: userId, role: target.role }, { $set: { role: input.role } });
   if (update.modifiedCount !== 1) {
     res.status(409).json({ error: { code: 'ROLE_CONFLICT', message: 'The user role changed concurrently. Refresh and retry.', requestId: req.requestId } });
