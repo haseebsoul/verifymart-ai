@@ -73,6 +73,23 @@ atlasPublicRouter.get('/products/:id', asyncHandler(async (req, res) => {
   res.json({ product: { ...product, priceUsd: product.priceCents.toNumber() / 100 } });
 }));
 
+
+atlasPublicRouter.get('/hubs', asyncHandler(async (_req, res) => {
+  const hubs = await getAtlasDb().collection('hubs').find({})
+    .sort({ name: 1 }).toArray();
+  res.json({ hubs: hubs.map(hub => ({
+    id: hub._id,
+    code: hub.code,
+    name: hub.name,
+    x: hub.x,
+    y: hub.y,
+    latencyMs: hub.latencyMs,
+    status: hub.status,
+    queueDepth: hub.queueDepth,
+    simulated: true
+  })) });
+}));
+
 atlasPublicRouter.get('/verify/:query', asyncHandler(async (req, res) => {
   const result = await verifyAtlasQuery(req.params.query ?? '');
   res.status(result.found ? 200 : 404).json(result);
