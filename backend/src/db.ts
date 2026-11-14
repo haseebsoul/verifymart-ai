@@ -15,7 +15,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('user','operator','admin')),
-  failed_logins INTEGER NOT NULL DEFAULT 0, locked_until TEXT, last_login TEXT, created_at TEXT NOT NULL
+  failed_logins INTEGER NOT NULL DEFAULT 0, locked_until TEXT, last_login TEXT, disabled_at TEXT, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -75,6 +75,12 @@ CREATE INDEX IF NOT EXISTS idx_events_product ON provenance_events(product_id, o
 CREATE INDEX IF NOT EXISTS idx_threats_open ON threats(resolved_at, severity);
 CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_logs(at DESC);
 `);
+
+// CREATE TABLE IF NOT EXISTS does not add columns to existing SQLite files.
+const userColumns = db.pragma('table_info(users)') as Array<{ name: string }>;
+if (!userColumns.some(column => column.name === 'disabled_at')) {
+  db.exec('ALTER TABLE users ADD COLUMN disabled_at TEXT');
+}
 
 export function nowIso(): string { return new Date().toISOString(); }
 export function cents(value: number): number { return Math.round((value + Number.EPSILON) * 100); }
