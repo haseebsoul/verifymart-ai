@@ -204,10 +204,15 @@ atlasMerchantRouter.patch(
       res.status(403).json({ error: { code: 'MERCHANT_ACCESS_DENIED', message: 'A pending or approved merchant application is required.', requestId: req.requestId } });
       return;
     }
-    const allowedStates = merchant.status === 'pending' ? ['draft'] : ['draft','published'];
-    const changes: Record<string, unknown> = { ...input, updatedAt: new Date() };
-    if (input.imageUrl === null) changes.imageUrl = '';
-    delete changes.imageUrl;
+    const allowedStates: Array<'draft' | 'published'> = merchant.status === 'pending' ? ['draft'] : ['draft','published'];
+    const changes: Partial<Pick<ProductDocument, 'name' | 'brand' | 'category' | 'hsCode' | 'priceCents' | 'imageUrl'>> & { updatedAt: Date } = {
+      updatedAt: new Date()
+    };
+    if (input.name !== undefined) changes.name = input.name;
+    if (input.brand !== undefined) changes.brand = input.brand;
+    if (input.category !== undefined) changes.category = input.category;
+    if (input.hsCode !== undefined) changes.hsCode = input.hsCode;
+    if (input.priceCents !== undefined) changes.priceCents = Long.fromNumber(input.priceCents);
     if (input.imageUrl !== undefined) changes.imageUrl = input.imageUrl ?? '';
     const updated = await database.collection<ProductDocument>('products').findOneAndUpdate(
       { _id: productId, merchantId, managedBy: 'merchant', listingStatus: { $in: allowedStates } },
