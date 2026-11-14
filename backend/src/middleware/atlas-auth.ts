@@ -100,7 +100,7 @@ export function requireAtlasRoleAndOwnership(
         const merchant = await getAtlasDb().collection<MerchantDocument>('merchants').findOne({
           userId: principal.id
         });
-        if (!merchant || merchant.status === 'rejected') {
+        if (!merchant) {
           sendAuthError(res, 403, 'MERCHANT_ACCESS_DENIED', 'An active merchant profile is required.');
           return;
         }
