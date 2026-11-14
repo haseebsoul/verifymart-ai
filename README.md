@@ -139,3 +139,48 @@ Add the appropriate license before distributing or accepting external contributi
 Built to make product trust more transparent.
 
 </div>
+
+
+## Atlas five-role runtime (feature branch)
+
+The current `main` runtime remains the legacy SQLite implementation. The five-role/Atlas implementation is being developed on `feat/atlas-five-role-migration`; it is **not a production cutover** and should not be deployed as production yet.
+
+### Development prerequisites
+
+- Node.js 20.19+ (CI uses Node 20.20.x).
+- A separate Atlas database named `verifymart_dev`.
+- A runtime database principal for the application collections, excluding `auditLog`.
+- A separate audit principal limited to `find` and `insert` on `auditLog` only.
+- Atlas network access restricted to the actual development machine/server outbound IP.
+- Local environment values configured outside Git.
+
+Copy `.env.example` to a local backend env file (never commit it), then configure at least:
+
+```dotenv
+MONGODB_URI=mongodb+srv://<APP_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Dev
+MONGODB_DB_NAME=verifymart_dev
+MONGODB_APP_NAME=VerifyMart-Dev
+MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit
+JWT_ACCESS_SECRET=<RANDOM_SECRET_AT_LEAST_32_CHARACTERS>
+CORS_ORIGIN=http://localhost:5173
+```
+
+The application principal should have the minimum CRUD permissions on its application collections and no write privileges on `auditLog`. The audit principal must be granted only `find` and `insert` on `auditLog`; it must not have update/remove. Create collections and indexes with a separate deployment/admin principal before runtime startup. Do not grant broad `readWrite` on the entire database to both users.
+
+### Atlas commands
+
+```powershell
+npm install
+npm run seed:atlas
+npm run dev:atlas
+```
+
+`seed:atlas` is restricted to `verifymart_dev` or `verifymart_staging`, refuses production and requires all collections/indexes to be provisioned first. Demo accounts are created only when a local `DEMO_PASSWORD` of at least 10 characters is supplied. No demo password is checked into the repository.
+
+The Atlas server listens on port 8000 by default; the Vite frontend remains on port 5173. `/api/ready` checks Atlas connectivity and the required application indexes. `/api/health` is process liveness only.
+
+### Migration safety
+
+`npm run migrate:atlas -- --apply` is **not** a casual setup command. First run it without `--apply` for a read-only dry run. It requires a local read-only SQLite source plus one-time migration and audit-insert credentials. The script only permits `verifymart_dev` and `verifymart_staging`; production cutover is a separate approved operation. Preserve the SQLite source until staging row counts, transaction behavior and end-to-end acceptance all reconcile.
+
+Escrow, seeded tariff rules, provenance events and telemetry remain clearly simulated. There are no live payment, customs, manufacturer-ledger or attack-detection integrations.
