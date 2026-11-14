@@ -63,13 +63,8 @@ export class MongoMerchantRepository {
 
     const products = getAtlasDb().collection<ProductDocument>('products');
     await products.updateMany(
-      { merchantId, managedBy: 'merchant', status: 'draft' },
-      {
-        $set: {
-          status: decision === 'approved' ? 'verified' : 'archived',
-          updatedAt: now
-        }
-      }
+      { merchantId, managedBy: 'merchant', listingStatus: 'draft' },
+      { $set: { listingStatus: decision === 'approved' ? 'published' : 'archived', updatedAt: now } }
     );
     await appendAuditEvent({
       actorId,
