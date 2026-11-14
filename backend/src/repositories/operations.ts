@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Long, type Collection } from 'mongodb';
+import type { Collection, Document } from 'mongodb';
 import { getAtlasDb } from '../infrastructure/atlas.js';
 import type {
   InventoryAdjustmentDocument,
@@ -10,7 +10,7 @@ import type {
 } from './contracts.js';
 
 export class MongoOperationsRepository {
-  private collection<T>(name: string): Collection<T> {
+  private collection<T extends Document>(name: string): Collection<T> {
     return getAtlasDb().collection<T>(name);
   }
 
