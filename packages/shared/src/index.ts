@@ -33,7 +33,7 @@ export type ProductCategory = (typeof CATEGORIES)[number];
 export interface PublicUser { id: string; name: string; email: string; role: Role; createdAt: string }
 export interface Product {
   id: string; sku: string; batchHash: string; hsCode: string; name: string; brand: string;
-  category: ProductCategory; priceUsd: number; dutyRatePct: number; stock: number; reorderThreshold: number;
+  category: ProductCategory; priceUsd: number; dutyRatePct?: number; stock: number; reorderThreshold: number;
   originHubId: string; authenticityScore: number; slaHours: number; imageUrl: string;
   status: 'verified' | 'low_stock' | 'audit_flag';
 }
