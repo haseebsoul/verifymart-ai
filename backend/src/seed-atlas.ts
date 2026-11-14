@@ -101,7 +101,7 @@ async function seed():Promise<void> {
           return {
             id:'evt_'+skuText.toLowerCase()+'_'+(step+1),
             stage,
-            hubId:step===0?String(hub):stageHubs[step],
+            hubId:step===0?String(hub):(stageHubs[step] ?? 'HUB-SIN'),
             occurredAt,
             hash:createHash('sha256').update(batchHash+':'+stage+':'+String(hub)+':'+occurredAt.toISOString()).digest('hex'),
             simulated:true
@@ -113,7 +113,7 @@ async function seed():Promise<void> {
           category:String(category), priceCents:Long.fromNumber(priceUsd*100),
           stock:stockCount, reorderThreshold:5, originHubId:String(hub),
           authenticityScore:authenticity, slaHours:24+(index%48),
-          imageUrl:'https://images.unsplash.com/photo-'+imageIds[index%imageIds.length]+'?auto=format&fit=crop&w=900&q=80',
+          imageUrl:'https://images.unsplash.com/photo-'+(imageIds[index%imageIds.length] ?? imageIds[0])+'?auto=format&fit=crop&w=900&q=80',
           status:state, listingStatus:'published', merchantId:null, managedBy:'platform',
           provenanceEvents:events, createdAt:now, updatedAt:now
         };
@@ -122,7 +122,7 @@ async function seed():Promise<void> {
     }
 
     const tariffCollection=database.collection<TariffRuleDocument>('tariffRules');
-    for(const [country,rates] of Object.entries(tariffBases)) {
+    for(const [country,rates] of Object.entries(tariffBases) as Array<[TariffRuleDocument['country'],{duty:number;vat:number}]>) {
       const baseId='tariff_'+country.toLowerCase();
       await tariffCollection.updateOne({_id:baseId},{$setOnInsert:{
         _id:baseId,hsPrefix:'',country,dutyRateBps:Math.round(rates.duty*10000),
@@ -197,8 +197,7 @@ async function seed():Promise<void> {
         ['trust_1',80,'On-time fulfillment'],['trust_2',120,'Verified provenance'],
         ['trust_3',65,'Low dispute rate'],['trust_4',100,'Consistent SLA']
       ] as const;
-      for(let i=0;i<demoEntries.length;i++) {
-        const [id,delta,reason]=demoEntries[i];
+      for(const [id,delta,reason] of demoEntries) {
         await trust.updateOne({_id:id},{$setOnInsert:{
           _id:id,merchantId:'merchant_demo',delta,reason,
           at:new Date(now.getTime()-(4-i)*86_400_000)
