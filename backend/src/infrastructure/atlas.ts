@@ -40,6 +40,9 @@ export async function connectAtlas(): Promise<Db> {
   if (appDb) return appDb;
   const uri = requiredEnv('MONGODB_URI');
   const databaseName = requiredEnv('MONGODB_DB_NAME');
+  if (!['verifymart_dev', 'verifymart_staging', 'verifymart_prod'].includes(databaseName)) {
+    throw new Error('MONGODB_DB_NAME must be verifymart_dev, verifymart_staging, or verifymart_prod. Legacy verifymart_v14 is not an application target.');
+  }
   const client = new MongoClient(uri, {
     appName: process.env.MONGODB_APP_NAME ?? 'VerifyMart-AI'
   });
