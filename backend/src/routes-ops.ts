@@ -138,5 +138,11 @@ opsRouter.delete('/admin/users/:id', ...admin, (req,res) => {
   const user = db.prepare('SELECT id,email,role FROM users WHERE id=?').get(req.params.id) as {id:string;email:string;role:string} | undefined;
   if (!user) { res.status(404).json({error:{code:'USER_NOT_FOUND',message:'User was not found.',requestId:req.requestId}}); return; }
   if (user.email.toLowerCase() !== email.toLowerCase()) { res.status(400).json({error:{code:'CONFIRMATION_MISMATCH',message:'The confirmation email does not match this user.',requestId:req.requestId}}); return; }
-  audit(req.user!.id,'USER_DELETED','user',user.id,{email:user.email,role:user.role}); db.prepare('DELETE FROM users WHERE id=?').run(user.id); res.status(204).end();
+  const now = nowIso();
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
+    db.prepare('UPDATE users SET disabled_at=? WHERE id=?').run(now,user.id);
+    audit(req.user!.id,'USER_DISABLED','user',user.id,{email:user.email,role:user.role,disabledAt:now});
+  });
+  transaction(); res.status(204).end();
 });
