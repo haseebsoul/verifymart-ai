@@ -161,8 +161,13 @@ atlasOpsRouter.patch(
   asyncHandler(async (req, res) => {
     const input = z.object({
       stock: z.number().int().min(0).max(100000),
+      priceUsd: z.number().finite().min(0.01).max(1000000).optional(),
       reason: z.string().trim().min(4).max(500)
     }).strict().parse(req.body);
+    if (input.priceUsd !== undefined && req.atlasPrincipal!.role !== 'admin') {
+      res.status(403).json({ error: { code: 'PRICE_CHANGE_FORBIDDEN', message: 'Only administrators may change product prices.', requestId: req.requestId } });
+      return;
+    }
     const id = req.params.id;
     if (!id) { res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } }); return; }
     const database = getAtlasDb();
@@ -181,9 +186,15 @@ atlasOpsRouter.patch(
           filter.merchantId = req.merchantId!;
           filter.managedBy = 'merchant';
         }
+        const setFields: Record<string, unknown> = {
+          stock: input.stock,
+          updatedAt: now,
+          status: input.stock <= current.reorderThreshold ? 'low_stock' : current.status === 'low_stock' ? 'verified' : current.status
+        };
+        if (input.priceUsd !== undefined) setFields.priceCents = Long.fromNumber(Math.round(input.priceUsd * 100));
         const result = await products.findOneAndUpdate(
           filter,
-          { $set: { stock: input.stock, updatedAt: now, status: input.stock <= current.reorderThreshold ? 'low_stock' : current.status === 'low_stock' ? 'verified' : current.status } },
+          { $set: setFields },
           { session, returnDocument: 'after' }
         );
         resultBox.changed = result ?? null;
