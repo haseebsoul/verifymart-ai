@@ -53,7 +53,8 @@ atlasOpsRouter.get(
       hubs,
       hubAllocation: hubs.map(hub => ({
         hubId: hub.code, name: hub.name,
-        orders: Number((byHub.get(hub.code) as { products?: number } | undefined)?.products ?? 0)
+        products: Number((byHub.get(hub.code) as { products?: number } | undefined)?.products ?? 0),
+        units: Number((byHub.get(hub.code) as { units?: number } | undefined)?.units ?? 0)
       })),
       velocity: [],
       telemetry: { simulated: true, source: 'No live telemetry source is connected.' }
@@ -291,6 +292,38 @@ atlasOpsRouter.patch(
 );
 
 atlasOpsRouter.get(
+  '/activity',
+  authenticateAtlas,
+  requireAtlasRoleAndOwnership([...operators]),
+  asyncHandler(async (_req, res) => {
+    const database = getAtlasDb();
+    const [events, orders, threats] = await Promise.all([
+      readAuditEvents({}, 100),
+      database.collection('orders').find({}).sort({ createdAt: -1 }).limit(50).toArray(),
+      database.collection<ThreatDocument>('threats').find({}).sort({ detectedAt: -1 }).limit(50).toArray()
+    ]);
+    const activity = [
+      ...events.map(event => ({
+        id: String(event._id), type: String(event.action), target: String(event.targetType),
+        targetId: String(event.targetId), at: event.at, actorId: event.actorId,
+        details: event.details, source: 'audit'
+      })),
+      ...orders.map(order => ({
+        id: 'order:' + String(order._id), type: 'ORDER_' + String(order.state).toUpperCase(),
+        target: 'order', targetId: String(order._id), at: order.createdAt,
+        actorId: order.userId, details: { simulatedEscrow: true }, source: 'order'
+      })),
+      ...threats.map(threat => ({
+        id: 'threat:' + threat._id, type: threat.type, target: 'threat',
+        targetId: threat._id, at: threat.detectedAt, actorId: null,
+        details: { severity: threat.severity, resolvedAt: threat.resolvedAt, simulated: true }, source: 'threat'
+      }))
+    ].sort((a,b) => b.at.getTime() - a.at.getTime()).slice(0,150);
+    res.json({ activity });
+  })
+);
+
+atlasOpsRouter.get(
   '/reports/audit.csv',
   authenticateAtlas,
   requireAtlasRoleAndOwnership([...operators]),
@@ -300,7 +333,15 @@ atlasOpsRouter.get(
       res.status(400).json({ error: { code: 'INVALID_LIMIT', message: 'limit must be an integer from 1 to 500.', requestId: req.requestId } });
       return;
     }
-    const events = await readAuditEvents({}, limit);
+    const from = typeof req.query.from === 'string' ? new Date(req.query.from + 'T00:00:00.000Z') : undefined;
+    const to = typeof req.query.to === 'string' ? new Date(req.query.to + 'T23:59:59.999Z') : undefined;
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime())) || (from && to && from > to)) {
+      res.status(400).json({ error: { code: 'INVALID_DATE_RANGE', message: 'Provide a valid date range.', requestId: req.requestId } });
+      return;
+    }
+    const filter: Record<string, unknown> = {};
+    if (from || to) filter.at = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+    const events = await readAuditEvents(filter, limit);
     const cell = (value: unknown) => {
       let text = String(value ?? '');
       if (/^[=+\-@\t\r]/.test(text)) text = "'" + text;
