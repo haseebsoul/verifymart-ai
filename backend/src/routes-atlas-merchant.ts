@@ -168,6 +168,114 @@ atlasMerchantRouter.post('/merchant/listings', authenticateAtlas, requireAtlasRo
   res.status(201).json({ product, provenanceNote: 'Application-generated verification hash only; no manufacturer attestation is implied.' });
 }));
 
+
+const merchantListingUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(160).optional(),
+  brand: z.string().trim().min(2).max(100).optional(),
+  category: z.enum(['Audio and Studio','Precision Horology','Edge Computing','Optics and Gear']).optional(),
+  hsCode: z.string().trim().min(4).max(16).regex(/^[0-9A-Za-z]+$/).optional(),
+  priceCents: z.number().int().safe().positive().optional(),
+  imageUrl: z.string().url().max(2048).nullable().optional()
+}).strict().refine(value => Object.keys(value).length > 0, 'At least one editable listing field is required.');
+
+atlasMerchantRouter.patch(
+  '/merchant/listings/:id',
+  authenticateAtlas,
+  requireAtlasRoleAndOwnership(['merchant']),
+  asyncHandler(async (req, res) => {
+    const merchantId = req.merchantId!;
+    const productId = req.params.id;
+    if (!productId) {
+      res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Listing was not found.', requestId: req.requestId } });
+      return;
+    }
+    const input = merchantListingUpdateSchema.parse(req.body);
+    const database = getAtlasDb();
+    const merchant = await database.collection<MerchantDocument>('merchants').findOne({
+      _id: merchantId, userId: req.atlasPrincipal!.id
+    });
+    if (!merchant || merchant.status === 'rejected') {
+      res.status(403).json({ error: { code: 'MERCHANT_ACCESS_DENIED', message: 'A pending or approved merchant application is required.', requestId: req.requestId } });
+      return;
+    }
+    const allowedStates = merchant.status === 'pending' ? ['draft'] : ['draft','published'];
+    const changes: Record<string, unknown> = { ...input, updatedAt: new Date() };
+    if (input.imageUrl === null) changes.imageUrl = '';
+    delete changes.imageUrl;
+    if (input.imageUrl !== undefined) changes.imageUrl = input.imageUrl ?? '';
+    const updated = await database.collection<ProductDocument>('products').findOneAndUpdate(
+      { _id: productId, merchantId, managedBy: 'merchant', listingStatus: { $in: allowedStates } },
+      { $set: changes },
+      { returnDocument: 'after' }
+    );
+    if (!updated) {
+      res.status(404).json({ error: { code: 'LISTING_NOT_EDITABLE', message: 'The listing was not found, is archived, or is not editable in the current merchant state.', requestId: req.requestId } });
+      return;
+    }
+    await appendAuditEvent({
+      actorId: req.atlasPrincipal!.id, action: 'MERCHANT_LISTING_UPDATED',
+      targetType: 'product', targetId: productId, details: { changedFields: Object.keys(input) }
+    });
+    res.json({ product: updated });
+  })
+);
+
+atlasMerchantRouter.post('/merchant/resubmit', authenticateAtlas, requireAtlasRoleAndOwnership(['merchant']), asyncHandler(async (req, res) => {
+  const input = applicationSchema.parse(req.body);
+  const merchantId = req.merchantId!;
+  const now = new Date();
+  const merchant = await getAtlasDb().collection<MerchantDocument>('merchants').findOneAndUpdate(
+    { _id: merchantId, userId: req.atlasPrincipal!.id, status: 'rejected' },
+    { $set: { businessName: input.businessName, country: input.country, status: 'pending', updatedAt: now }, $unset: { rejectionReason: '' } },
+    { returnDocument: 'after' }
+  );
+  if (!merchant) {
+    res.status(409).json({ error: { code: 'MERCHANT_RESUBMISSION_NOT_ALLOWED', message: 'Only a rejected merchant application can be resubmitted.', requestId: req.requestId } });
+    return;
+  }
+  await appendAuditEvent({
+    actorId: req.atlasPrincipal!.id, action: 'MERCHANT_APPLICATION_RESUBMITTED',
+    targetType: 'merchant', targetId: merchantId,
+    details: { businessName: merchant.businessName, country: merchant.country }
+  });
+  res.json({ merchant });
+}));
+
+atlasMerchantRouter.post(
+  '/merchant/listings/:id/archive',
+  authenticateAtlas,
+  requireAtlasRoleAndOwnership(['merchant']),
+  asyncHandler(async (req, res) => {
+    const merchantId = req.merchantId!;
+    const productId = req.params.id;
+    if (!productId) {
+      res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Listing was not found.', requestId: req.requestId } });
+      return;
+    }
+    const merchant = await getAtlasDb().collection<MerchantDocument>('merchants').findOne({
+      _id: merchantId, userId: req.atlasPrincipal!.id
+    });
+    if (!merchant || merchant.status === 'rejected') {
+      res.status(403).json({ error: { code: 'MERCHANT_ACCESS_DENIED', message: 'An eligible merchant profile is required.', requestId: req.requestId } });
+      return;
+    }
+    const allowedStates = merchant.status === 'pending' ? ['draft'] : ['draft','published'];
+    const archived = await getAtlasDb().collection<ProductDocument>('products').updateOne(
+      { _id: productId, merchantId, managedBy: 'merchant', listingStatus: { $in: allowedStates } },
+      { $set: { listingStatus: 'archived', updatedAt: new Date() } }
+    );
+    if (archived.modifiedCount !== 1) {
+      res.status(404).json({ error: { code: 'LISTING_NOT_ARCHIVABLE', message: 'The listing was not found or is already archived.', requestId: req.requestId } });
+      return;
+    }
+    await appendAuditEvent({
+      actorId: req.atlasPrincipal!.id, action: 'MERCHANT_LISTING_ARCHIVED',
+      targetType: 'product', targetId: productId, details: { merchantId }
+    });
+    res.status(204).end();
+  })
+);
+
 atlasMerchantRouter.patch(
   '/merchant/listings/:id/stock',
   authenticateAtlas,
