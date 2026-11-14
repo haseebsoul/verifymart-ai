@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { loginSchema, registerSchema, type PublicUser } from '@verifymart/shared';
-import { db, cryptoId, nowIso, audit } from './db.js';
+import { db, cryptoId, nowIso } from './db.js';
 import { authenticate, issueAccessToken } from './middleware/auth.js';
 import { asyncHandler, parseBody } from './middleware/http.js';
 
