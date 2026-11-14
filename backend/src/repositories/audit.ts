@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Filter, Document } from 'mongodb';
 import { connectAuditLog } from '../infrastructure/atlas.js';
 import type { AuditLogDocument } from './contracts.js';
@@ -13,7 +14,7 @@ export interface AppendAuditInput {
 export async function appendAuditEvent(input: AppendAuditInput): Promise<void> {
   const auditLog = await connectAuditLog();
   const event: AuditLogDocument = {
-    _id: 'aud_' + crypto.randomUUID().replaceAll('-', '').slice(0, 18),
+    _id: 'aud_' + randomUUID().replaceAll('-', '').slice(0, 18),
     actorId: input.actorId,
     action: input.action,
     targetType: input.targetType,
