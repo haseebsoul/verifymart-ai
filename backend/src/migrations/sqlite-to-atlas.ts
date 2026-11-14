@@ -193,7 +193,7 @@ function buildCollections(database: Database.Database): TargetCollection[] {
       _id: String(row.id),
       idempotencyKey: idKey.key,
       requestHash: idKey.requestHash,
-      userId: String(row.user_id ?? ''),
+      userId: row.user_id ? String(row.user_id) : null,
       destination: String(row.destination),
       items: itemsByOrder.get(String(row.id)) ?? [],
       quote: {
