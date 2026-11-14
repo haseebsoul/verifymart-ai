@@ -37,29 +37,31 @@ function sendAuthError(res: Response, status: 401 | 403, code: string, message: 
 }
 
 /**
- * Each authenticated request reloads the user from Atlas. JWT role claims are
- * not trusted for authorization, so role changes and account disablement take
- * effect immediately instead of waiting for access-token expiry.
+ * Reloading the user on every request makes the database role authoritative.
+ * A demotion or role change takes effect immediately, not after token expiry.
  */
-export const authenticateAtlas: RequestHandler = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const header = req.header('authorization');
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
-    if (!token) {
-      sendAuthError(res, 401, 'UNAUTHORIZED', 'A valid access token is required.');
-      return;
-    }
+export const authenticateAtlas: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+  const header = req.header('authorization');
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) {
+    sendAuthError(res, 401, 'UNAUTHORIZED', 'A valid access token is required.');
+    return;
+  }
 
-    const decoded = jwt.verify(token, accessSecret()) as jwt.JwtPayload;
-    if (typeof decoded.sub !== 'string') {
+  let decoded: jwt.JwtPayload;
+  try {
+    const verified = jwt.verify(token, accessSecret());
+    if (typeof verified === 'string' || typeof verified.sub !== 'string') {
       sendAuthError(res, 401, 'UNAUTHORIZED', 'The access token is invalid.');
       return;
     }
+    decoded = verified;
+  } catch {
+    sendAuthError(res, 401, 'UNAUTHORIZED', 'A valid access token is required.');
+    return;
+  }
 
+  try {
     const user = await getAtlasDb().collection<UserDocument>('users').findOne({ _id: decoded.sub });
     if (!user) {
       sendAuthError(res, 401, 'UNAUTHORIZED', 'The account is no longer available.');
@@ -73,8 +75,8 @@ export const authenticateAtlas: RequestHandler = async (
       role: user.role
     };
     next();
-  } catch {
-    sendAuthError(res, 401, 'UNAUTHORIZED', 'A valid access token is required.');
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -102,9 +104,13 @@ export function requireAtlasRoleAndOwnership(
           sendAuthError(res, 403, 'MERCHANT_ACCESS_DENIED', 'An active merchant profile is required.');
           return;
         }
+        if (options.productIdParam && merchant.status !== 'approved') {
+          sendAuthError(res, 403, 'MERCHANT_APPROVAL_REQUIRED', 'Merchant approval is required before changing published stock.');
+          return;
+        }
 
-        // Role and ownership are decided in the same middleware. Route handlers
-        // receive this server-resolved merchantId; they never accept it from input.
+        // Role and ownership are evaluated in one middleware. Route handlers
+        // consume the server-resolved merchantId, never a browser-supplied value.
         principal.merchantId = merchant._id;
         req.merchantId = merchant._id;
 
