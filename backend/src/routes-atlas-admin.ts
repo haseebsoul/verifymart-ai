@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { createHash } from 'node:crypto';
+import { MongoServerError } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { MongoMerchantRepository } from './repositories/merchants.js';
-import type { HubDocument, ProductDocument, TariffRuleDocument, UserDocument } from './repositories/contracts.js';
+import type { HubDocument, MerchantDocument, ProductDocument, TariffRuleDocument, UserDocument } from './repositories/contracts.js';
 
 export const atlasAdminRouter = Router();
 const adminOnly = [authenticateAtlas, requireAtlasRoleAndOwnership(['admin'])];
