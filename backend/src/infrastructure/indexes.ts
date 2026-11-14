@@ -16,6 +16,8 @@ const indexes: IndexPlan[] = [
   { collection: 'products', keys: { category: 1 }, options: { name: 'products_category' } },
   { collection: 'products', keys: { merchantId: 1 }, options: { name: 'products_merchant_id' } },
   { collection: 'products', keys: { status: 1 }, options: { name: 'products_status' } },
+  { collection: 'products', keys: { listingStatus: 1 }, options: { name: 'products_listing_status' } },
+  { collection: 'products', keys: { merchantId: 1, listingStatus: 1 }, options: { name: 'products_merchant_listing_status' } },
   { collection: 'hubs', keys: { code: 1 }, options: { name: 'hubs_code_unique', unique: true } },
   { collection: 'tariffRules', keys: { hsPrefix: 1, country: 1 }, options: { name: 'tariffRules_hsPrefix_country_unique', unique: true } },
   { collection: 'orders', keys: { idempotencyKey: 1 }, options: { name: 'orders_idempotency_key_unique', unique: true } },
