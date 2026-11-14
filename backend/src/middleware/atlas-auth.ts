@@ -80,7 +80,7 @@ export const authenticateAtlas: RequestHandler = async (req: Request, res: Respo
 
 export function requireAtlasRoleAndOwnership(
   roles: Role[],
-  options: { productIdParam?: string } = {}
+  options: { productIdParam?: string; allowPendingDraft?: boolean; editableListingOnly?: boolean } = {}
 ): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -102,7 +102,7 @@ export function requireAtlasRoleAndOwnership(
           sendAuthError(res, 403, 'MERCHANT_ACCESS_DENIED', 'An active merchant profile is required.');
           return;
         }
-        if (options.productIdParam && merchant.status !== 'approved') {
+        if (options.productIdParam && merchant.status !== 'approved' && !(options.allowPendingDraft && merchant.status === 'pending')) {
           sendAuthError(res, 403, 'MERCHANT_APPROVAL_REQUIRED', 'Merchant approval is required before changing published stock.');
           return;
         }
@@ -121,7 +121,12 @@ export function requireAtlasRoleAndOwnership(
           const ownedProduct = await getAtlasDb().collection<ProductDocument>('products').findOne({
             _id: productId,
             merchantId: merchant._id,
-            managedBy: 'merchant'
+            managedBy: 'merchant',
+            ...(options.allowPendingDraft && merchant.status === 'pending'
+              ? { listingStatus: 'draft' }
+              : options.editableListingOnly
+                ? { listingStatus: { $in: ['draft', 'published'] } }
+                : {})
           });
           if (!ownedProduct) {
             sendAuthError(res, 403, 'RESOURCE_NOT_OWNED', 'This resource does not belong to your merchant account.');
