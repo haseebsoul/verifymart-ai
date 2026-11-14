@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useCart } from '../context/cart';
 export function Header(){
   const {items,setOpen}=useCart();const [mobile,setMobile]=useState(false);const count=items.reduce((s,i)=>s+i.quantity,0);
-  const links=[['How it works','#how-it-works'],['Verified store','/store'],['Batch lookup','/verify'],['Landed duty','#calculator']];
+  const links: Array<[string,string]> = [['How it works','#how-it-works'],['Verified store','/store'],['Batch lookup','/verify'],['Landed duty','#calculator']];
   return <header className="site-header">
     <Link to="/" className="brand" aria-label="VerifyMart home"><span className="brand-mark"><ShieldCheck size={21}/></span><span>VerifyMart <i>AI</i></span></Link>
     <nav className={`main-nav ${mobile?'is-open':''}`} aria-label="Main navigation">
