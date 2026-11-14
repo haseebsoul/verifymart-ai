@@ -183,6 +183,13 @@ async function shutdown(signal: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const jwtSecret = process.env.JWT_ACCESS_SECRET?.trim();
+  if (!jwtSecret || jwtSecret.length < 32 || jwtSecret.toLowerCase().includes('replace-with')) {
+    throw new Error('JWT_ACCESS_SECRET must be a non-placeholder random value of at least 32 characters.');
+  }
+  if (process.env.NODE_ENV === 'production' && !process.env.CORS_ORIGIN?.trim()) {
+    throw new Error('CORS_ORIGIN must be explicitly configured in production.');
+  }
   await connectAtlas();
   await connectAuditLog();
   await checkAtlasReady();
