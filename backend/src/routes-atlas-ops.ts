@@ -63,6 +63,22 @@ atlasOpsRouter.get(
 );
 
 atlasOpsRouter.get(
+  '/inventory/listings',
+  authenticateAtlas,
+  requireAtlasRoleAndOwnership(['inventory_manager','operator','admin']),
+  asyncHandler(async (_req, res) => {
+    const products = await getAtlasDb().collection<ProductDocument>('products')
+      .find({}).sort({ category: 1, name: 1 }).limit(1000).toArray();
+    res.json({ products: products.map(product => ({
+      id: product._id, sku: product.sku, name: product.name, brand: product.brand,
+      category: product.category, priceUsd: product.priceCents.toNumber() / 100,
+      stock: product.stock, reorderThreshold: product.reorderThreshold,
+      status: product.status, listingStatus: product.listingStatus
+    })) });
+  })
+);
+
+atlasOpsRouter.get(
   '/warehouses',
   authenticateAtlas,
   requireAtlasRoleAndOwnership(['inventory_manager',...operators]),
@@ -362,16 +378,34 @@ atlasOpsRouter.get(
   authenticateAtlas,
   requireAtlasRoleAndOwnership(['merchant','operator','admin']),
   asyncHandler(async (req, res) => {
-    const merchantId = req.atlasPrincipal!.role === 'merchant' ? req.merchantId : undefined;
-    const ledger = await getAtlasDb().collection<TrustLedgerDocument>('trustLedger')
+    const principal = req.atlasPrincipal!;
+    const merchantId = principal.role === 'merchant' ? req.merchantId : undefined;
+    const database = getAtlasDb();
+    let trustScore: number | null = null;
+    let merchantName: string | null = null;
+
+    if (merchantId) {
+      const merchant = await database.collection('merchants').findOne({ _id: merchantId });
+      trustScore = typeof merchant?.trustScore === 'number' ? merchant.trustScore : null;
+      merchantName = typeof merchant?.businessName === 'string' ? merchant.businessName : null;
+    }
+
+    const ledger = await database.collection<TrustLedgerDocument>('trustLedger')
       .find(merchantId ? { merchantId } : {}).sort({ at: -1 }).limit(500).toArray();
-    const total = ledger.reduce((sum, entry) => sum + entry.delta, 0);
+    let runningTotal = trustScore ?? 0;
+    const ordered = [...ledger].reverse().map(entry => {
+      runningTotal += entry.delta;
+      return { id: entry._id, delta: entry.delta, reason: entry.reason, at: entry.at, runningTotal };
+    }).reverse();
+
     res.json({
       merchantId: merchantId ?? null,
-      score: Math.min(1000, 760 + total),
+      merchant: merchantName,
+      score: trustScore,
       outOf: 1000,
-      perks: ['Priority verification review','Expanded inventory visibility'],
-      ledger
+      perks: [],
+      ledger: ordered,
+      notice: 'No rewards tier is currently configured; no payout or benefit is implied.'
     });
   })
 );
