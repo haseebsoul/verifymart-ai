@@ -6,7 +6,7 @@ import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/at
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { createMongoCheckout } from './repositories/checkout.js';
-import type { MerchantDocument, OrderDocument, ProductDocument } from './repositories/contracts.js';
+import type { OrderDocument, ProductDocument } from './repositories/contracts.js';
 import { calculateAtlasDuty } from './services/duty-atlas.js';
 
 export const atlasCommerceRouter = Router();
@@ -24,7 +24,7 @@ const checkoutLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: req => req.atlasPrincipal?.id ?? req.ip
+  keyGenerator: req => req.atlasPrincipal?.id ?? req.ip ?? req.socket.remoteAddress ?? 'unknown-ip'
 });
 
 atlasCommerceRouter.post(
@@ -202,4 +202,3 @@ atlasCommerceRouter.post('/orders/:id/refund', authenticateAtlas,
   })
 );
 
-void MerchantDocument;
