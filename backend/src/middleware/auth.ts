@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import jwt, { type SignOptions } from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import type { Role } from '@verifymart/shared';
 
 export interface AuthUser { id: string; name: string; email: string; role: Role }
@@ -10,7 +10,7 @@ const secret = (): string => {
   return configured ?? 'local-development-only-secret-change-me';
 };
 export function issueAccessToken(user: AuthUser): string {
-  return jwt.sign({ name: user.name, email: user.email, role: user.role }, secret(), { subject: user.id, expiresIn: (process.env.JWT_ACCESS_TTL ?? '15m') as SignOptions['expiresIn'] });
+  return jwt.sign({ name: user.name, email: user.email, role: user.role }, secret(), { subject: user.id, expiresIn: '15m' });
 }
 export function verifyAccessToken(token: string): AuthUser | null {
   try {
