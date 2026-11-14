@@ -133,6 +133,7 @@ function buildCollections(database: Database.Database): TargetCollection[] {
     slaHours: Number(row.sla_hours),
     imageUrl: String(row.image_url ?? ''),
     status: String(row.status),
+    listingStatus: 'published',
     merchantId: null,
     managedBy: 'platform',
     provenanceEvents: (eventsByProduct.get(String(row.id)) ?? []).slice(-50),
