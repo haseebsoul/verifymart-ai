@@ -1,6 +1,6 @@
 import type { Collection } from 'mongodb';
 import { getAtlasDb } from '../infrastructure/atlas.js';
-import type { ProductDocument, ProvenanceDocument } from './contracts.js';
+import type { MerchantDocument, ProductDocument, ProvenanceDocument, UserDocument } from './contracts.js';
 
 export class MongoProductRepository {
   private products(): Collection<ProductDocument> {
