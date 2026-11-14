@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { getAtlasDb } from '../infrastructure/atlas.js';
-import type { MerchantDocument, Role, UserDocument } from '../repositories/contracts.js';
+import type { MerchantDocument, ProductDocument, Role, UserDocument } from '../repositories/contracts.js';
 
 export interface AtlasPrincipal {
   id: string;
@@ -48,21 +48,21 @@ export const authenticateAtlas: RequestHandler = async (req: Request, res: Respo
     return;
   }
 
-  let decoded: jwt.JwtPayload;
+  let subject: string;
   try {
     const verified = jwt.verify(token, accessSecret());
     if (typeof verified === 'string' || typeof verified.sub !== 'string') {
       sendAuthError(res, 401, 'UNAUTHORIZED', 'The access token is invalid.');
       return;
     }
-    decoded = verified;
+    subject = verified.sub;
   } catch {
     sendAuthError(res, 401, 'UNAUTHORIZED', 'A valid access token is required.');
     return;
   }
 
   try {
-    const user = await getAtlasDb().collection<UserDocument>('users').findOne({ _id: decoded.sub });
+    const user = await getAtlasDb().collection<UserDocument>('users').findOne({ _id: subject });
     if (!user) {
       sendAuthError(res, 401, 'UNAUTHORIZED', 'The account is no longer available.');
       return;
@@ -116,7 +116,11 @@ export function requireAtlasRoleAndOwnership(
 
         if (options.productIdParam) {
           const productId = req.params[options.productIdParam];
-          const ownedProduct = await getAtlasDb().collection('products').findOne({
+          if (!productId) {
+            sendAuthError(res, 403, 'RESOURCE_NOT_OWNED', 'This resource does not belong to your merchant account.');
+            return;
+          }
+          const ownedProduct = await getAtlasDb().collection<ProductDocument>('products').findOne({
             _id: productId,
             merchantId: merchant._id,
             managedBy: 'merchant'
