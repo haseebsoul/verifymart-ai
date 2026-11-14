@@ -5,7 +5,7 @@ import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
-import type { MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
+import type { InventoryAdjustmentDocument, MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
 
 export const atlasMerchantRouter = Router();
 
@@ -68,8 +68,13 @@ atlasMerchantRouter.post('/merchant/apply', authenticateAtlas, asyncHandler(asyn
 }));
 
 atlasMerchantRouter.get('/merchant/me', authenticateAtlas, requireAtlasRoleAndOwnership(['merchant']), asyncHandler(async (req, res) => {
+  const merchantId = req.merchantId;
+  if (!merchantId) {
+    res.status(404).json({ error: { code: 'MERCHANT_NOT_FOUND', message: 'Merchant profile was not found.', requestId: req.requestId } });
+    return;
+  }
   const merchant = await getAtlasDb().collection<MerchantDocument>('merchants').findOne({
-    _id: req.merchantId,
+    _id: merchantId,
     userId: req.atlasPrincipal!.id
   });
   if (!merchant) {
@@ -80,7 +85,7 @@ atlasMerchantRouter.get('/merchant/me', authenticateAtlas, requireAtlasRoleAndOw
 }));
 
 atlasMerchantRouter.get('/merchant/listings', authenticateAtlas, requireAtlasRoleAndOwnership(['merchant','admin']), asyncHandler(async (req, res) => {
-  const filter = req.atlasPrincipal!.role === 'merchant' ? { merchantId: req.merchantId } : {};
+  const filter = req.atlasPrincipal!.role === 'merchant' ? { merchantId: req.merchantId! } : {};
   const products = await getAtlasDb().collection<ProductDocument>('products')
     .find(filter).sort({ updatedAt: -1, name: 1 }).limit(200).toArray();
   res.json({ products });
@@ -95,7 +100,12 @@ atlasMerchantRouter.patch(
     const input = schema.parse(req.body);
     const database = getAtlasDb();
     const products = database.collection<ProductDocument>('products');
-    const product = await products.findOne({ _id: req.params.id });
+    const productId = req.params.id;
+    if (!productId) {
+      res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
+      return;
+    }
+    const product = await products.findOne({ _id: productId });
     if (!product) {
       res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
       return;
@@ -103,7 +113,7 @@ atlasMerchantRouter.patch(
 
     const delta = input.stock - product.stock;
     const filter = req.atlasPrincipal!.role === 'merchant'
-      ? { _id: product._id, merchantId: req.merchantId, managedBy: 'merchant' }
+      ? { _id: product._id, merchantId: req.merchantId!, managedBy: 'merchant' }
       : { _id: product._id };
     const session = database.client.startSession();
     try {
@@ -117,8 +127,8 @@ atlasMerchantRouter.patch(
           throw Object.assign(new Error('Inventory changed concurrently. Refresh and retry.'), { status: 409, code: 'INVENTORY_CONFLICT' });
         }
         if (delta !== 0) {
-          await database.collection('inventoryAdjustments').insertOne({
-            _id: 'iad_' + crypto.randomUUID().replaceAll('-', '').slice(0, 18),
+          await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments').insertOne({
+            _id: 'iad_' + randomUUID().replaceAll('-', '').slice(0, 18),
             productId: product._id,
             actorId: req.atlasPrincipal!.id,
             actorRole: req.atlasPrincipal!.role,
