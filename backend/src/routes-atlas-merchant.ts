@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { Router } from 'express';
-import { Long } from 'mongodb';
+import { Long, MongoServerError, type Filter } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
@@ -189,7 +189,7 @@ atlasMerchantRouter.patch(
     }
 
     const delta = input.stock - product.stock;
-    const filter = req.atlasPrincipal!.role === 'merchant'
+    const filter: Filter<ProductDocument> = req.atlasPrincipal!.role === 'merchant'
       ? { _id: product._id, merchantId: req.merchantId!, managedBy: 'merchant' }
       : { _id: product._id };
     const session = database.client.startSession();
