@@ -104,7 +104,13 @@ atlasMerchantRouter.get('/merchant/listings', authenticateAtlas, requireAtlasRol
   const filter = req.atlasPrincipal!.role === 'merchant' ? { merchantId: req.merchantId! } : {};
   const products = await getAtlasDb().collection<ProductDocument>('products')
     .find(filter).sort({ updatedAt: -1, name: 1 }).limit(200).toArray();
-  res.json({ products });
+  res.json({ products: products.map(product => ({
+    id: product._id, _id: product._id, sku: product.sku, batchHash: product.batchHash,
+    hsCode: product.hsCode, name: product.name, brand: product.brand, category: product.category,
+    priceUsd: product.priceCents.toNumber() / 100, stock: product.stock,
+    reorderThreshold: product.reorderThreshold, imageUrl: product.imageUrl,
+    status: product.status, listingStatus: product.listingStatus
+  })) });
 }));
 
 atlasMerchantRouter.post('/merchant/listings', authenticateAtlas, requireAtlasRoleAndOwnership(['merchant']), asyncHandler(async (req, res) => {
