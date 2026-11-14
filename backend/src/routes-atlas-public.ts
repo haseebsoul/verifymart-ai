@@ -22,7 +22,7 @@ atlasPublicRouter.get('/products', asyncHandler(async (req, res) => {
   const category = typeof req.query.category === 'string' ? req.query.category : undefined;
   const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
   const verifiedOnly = req.query.verifiedOnly === 'true';
-  const sort = req.query.sort === 'price_asc' ? 'price_asc' : req.query.sort === 'price_desc' ? 'price_desc' : 'name';
+  const sort = req.query.sort === 'price_asc' ? 'price_asc' : req.query.sort === 'price_desc' ? 'price_desc' : req.query.sort === 'authenticity' ? 'authenticity' : 'name';
   let filtered = products.filter((product) =>
     (!category || product.category === category) &&
     (!search || (product.name + ' ' + product.brand + ' ' + product.sku).toLowerCase().includes(search)) &&
