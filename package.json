@@ -21,6 +21,7 @@
     "lint:colors": "node scripts/lint-colors.mjs",
     "typecheck": "npm run build --workspace @verifymart/shared && npm run typecheck --workspace backend && npm run typecheck --workspace frontend",
     "seed": "npm --workspace backend run seed",
+    "seed:atlas": "npm --workspace backend run seed:atlas",
     "start": "npm --workspace backend start",
     "migrate:atlas": "npm --workspace backend run migrate:atlas",
     "format": "prettier --write ."
