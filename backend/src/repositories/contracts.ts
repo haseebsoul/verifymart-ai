@@ -52,7 +52,8 @@ export interface ProductDocument extends Document {
   authenticityScore: number;
   slaHours: number;
   imageUrl: string;
-  status: 'verified' | 'low_stock' | 'audit_flag' | 'draft' | 'archived';
+  status: 'verified' | 'low_stock' | 'audit_flag';
+  listingStatus: 'draft' | 'published' | 'archived';
   merchantId: string | null;
   managedBy: 'merchant' | 'platform';
   provenanceEvents: ProvenanceDocument[];
