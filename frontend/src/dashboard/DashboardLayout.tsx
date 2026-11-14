@@ -4,6 +4,10 @@ import { useEffect,useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getAccessToken } from '../lib/api';
 
+const shopperNav=[
+  {to:'/dashboard',label:'My orders',icon:LayoutDashboard,end:true},
+  {to:'/dashboard/account',label:'Account',icon:Boxes}
+];
 const operationsNav=[
   {to:'/dashboard',label:'Overview',icon:LayoutDashboard,end:true},
   {to:'/dashboard/topology',label:'Network topology',icon:Globe2},
@@ -33,7 +37,7 @@ export function DashboardLayout(){
   const [socketStatus,setSocketStatus]=useState<'connecting'|'connected'|'reconnecting'>('connecting');
   const [collapsed,setCollapsed]=useState(false);const [mobile,setMobile]=useState(false);
   const role=user?.role as string;
-  const nav=role==='merchant'?merchantNav:role==='inventory_manager'?inventoryNav:operationsNav;
+  const nav=role==='shopper'?shopperNav:role==='merchant'?merchantNav:role==='inventory_manager'?inventoryNav:operationsNav;
 
   useEffect(()=>{
     if(!user)return;
