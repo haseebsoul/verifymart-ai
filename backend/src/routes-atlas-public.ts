@@ -45,7 +45,6 @@ atlasPublicRouter.get('/products', asyncHandler(async (req, res) => {
       brand: product.brand,
       category: product.category,
       priceUsd: product.priceCents.toNumber() / 100,
-      dutyRatePct: 0,
       stock: product.stock,
       reorderThreshold: product.reorderThreshold,
       originHubId: product.originHubId,
