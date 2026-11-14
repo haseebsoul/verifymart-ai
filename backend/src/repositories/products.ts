@@ -9,10 +9,10 @@ export class MongoProductRepository {
 
   private async activeApprovedMerchantIds(): Promise<string[]> {
     const database = getAtlasDb();
-    const approved = await database.collection('merchants')
+    const approved = await database.collection<MerchantDocument>('merchants')
       .find({ status: 'approved' }, { projection: { _id: 1, userId: 1 } }).toArray();
     if (!approved.length) return [];
-    const users = await database.collection('users')
+    const users = await database.collection<UserDocument>('users')
       .find({
         _id: { $in: approved.map(merchant => String(merchant.userId)) },
         role: 'merchant',
