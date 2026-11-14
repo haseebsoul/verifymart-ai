@@ -148,3 +148,41 @@ The backend V8 coverage report for this exact run was **14.81% statements/lines,
 - The existing M0 cluster is not a production availability/backup posture. Production credentials, network access, backup/PITR and staging acceptance remain separate release gates.
 
 PR #1 remains **open and draft**. No merge, deployment, main-branch write, seed execution, migration, or production/legacy database operation was performed.
+
+
+---
+
+## Reference-data governance and latest CI — 2026-11-14
+
+The integration was extended after the prior `97e8af5d...` checkpoint:
+
+- Administrator APIs and dashboard UI now support hub creation, editing and retirement (retired records are preserved rather than hard-deleted).
+- Administrator APIs and dashboard UI now support tariff-rule creation, rate updates and deletion of non-base HS-prefix rules. Destination base tariff rules are protected from deletion. Changes are audit-recorded.
+- Merchant approval/rejection now runs the merchant state change and draft publication/archive inside an Atlas transaction and checks that the applicant user is active and still has the merchant role.
+- Public landed-cost quotes now use the same public product repository visibility rules as catalog/verification; unpublished or unapproved/disabled merchant listings cannot be quoted through a guessed ID.
+
+### Exact implementation-head verification
+
+GitHub Actions **run 43655633531** passed on exact implementation commit **`b8869fdc7d5ddff028c8618907a05c6da4ba3e75`**:
+
+- install — passed
+- shared/backend/frontend type-check — passed
+- shared/backend/frontend build — passed
+- backend tests — 4 test files passed
+- frontend tests — 1 test file passed
+- ESLint — passed
+- color lint — passed
+
+Backend V8 coverage for that run: **15.02% statements/lines, 51.61% branches and 31.70% functions**. The suite is not a substitute for the SRS endpoint/RBAC acceptance matrix. The 80% core-service coverage requirement remains unmet.
+
+### Remaining acceptance and external blockers
+
+1. Dedicated least-privilege `verifymart_dev` application credentials and separate DB-enforced audit `find`/`insert` credentials are not provisioned; the application host's restricted Atlas network access is not confirmed. No real app startup/readiness or transaction has been run with these principals.
+2. The development product collection remains empty. The Atlas seed has not been executed because app credentials are unavailable. Existing hub/tariff/settings data was inspected read-only.
+3. No local SQLite source file or approved migration credentials were available. No migration was run.
+4. Comprehensive Supertest coverage for successful and denied route cases, role/status changes, stock races, idempotent checkout and the admin/merchant workflows remains incomplete.
+5. All five role-specific Playwright journeys, denied cross-role/cross-owner browser journeys, axe accessibility results and full WCAG 2.2 AA acceptance remain unverified.
+6. Core service coverage remains below 80%; secret scanning and measured SRE/backup/restore acceptance are not evidenced.
+7. The dev cluster is M0 and not a production HA/PITR/backup configuration.
+
+PR #1 remains open and draft, not merge-ready. No merge, deployment, main-branch write, production configuration update, seed execution, migration or modification of `verifymart_v14` was performed.
