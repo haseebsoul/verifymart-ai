@@ -97,7 +97,7 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
       const snapshots: OrderDocument['items'] = [];
       for (const item of normalizedItems) {
         const product = await products.findOne(
-          { _id: item.productId, stock: { $gte: item.quantity }, status: { $nin: ['draft', 'archived'] } },
+          { _id: item.productId, stock: { $gte: item.quantity }, listingStatus: 'published' },
           { session }
         );
         if (!product) {
