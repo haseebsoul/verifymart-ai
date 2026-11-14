@@ -8,9 +8,9 @@ import { api } from '../lib/api';
 import { money } from '../lib/format';
 export function CartDrawer(){
   const {items,destination,open,setOpen,setDestination,setQty,remove,clear}=useCart();const {user}=useAuth();const navigate=useNavigate();
-  const [quote,setQuote]=useState<DutyQuote|null>(null);const [loadingQuote,setLoadingQuote]=useState(false);const [submitting,setSubmitting]=useState(false);const [error,setError]=useState('');const [receipt,setReceipt]=useState('');
+  const [quote,setQuote]=useState<DutyQuote|null>(null);const [quotedSignature,setQuotedSignature]=useState('');const [loadingQuote,setLoadingQuote]=useState(false);const [submitting,setSubmitting]=useState(false);const [error,setError]=useState('');const [receipt,setReceipt]=useState('');
   const signature=useMemo(()=>JSON.stringify({destinationCountry:destination,items:items.map(i=>({productId:i.product.id,quantity:i.quantity}))}),[destination,items]);
-  useEffect(()=>{if(!open||!items.length){setQuote(null);return;}let active=true;setLoadingQuote(true);const timer=window.setTimeout(()=>{void api<DutyQuote>('/duty/calculate',{method:'POST',body:signature}).then(q=>{if(active)setQuote(q);}).catch(e=>{if(active)setError(e instanceof Error?e.message:'Quote could not be calculated.');}).finally(()=>{if(active)setLoadingQuote(false);});},300);return()=>{active=false;window.clearTimeout(timer);};},[open,signature,items.length]);
+  useEffect(()=>{if(!open||!items.length){setQuote(null);setQuotedSignature('');setLoadingQuote(false);return;}let active=true;setQuote(null);setQuotedSignature('');setError('');setLoadingQuote(true);const timer=window.setTimeout(()=>{void api<DutyQuote>('/duty/calculate',{method:'POST',body:signature}).then(q=>{if(active){setQuote(q);setQuotedSignature(signature);}}).catch(e=>{if(active)setError(e instanceof Error?e.message:'Quote could not be calculated.');}).finally(()=>{if(active)setLoadingQuote(false);});},300);return()=>{active=false;window.clearTimeout(timer);};},[open,signature,items.length]);
   const checkout=async()=>{if(!user){setOpen(false);navigate('/login?next=/store');return;}setSubmitting(true);setError('');try{const key=crypto.randomUUID();const result=await api<{orderId:string;escrowReceiptId:string;total:number}>('/orders/checkout',{method:'POST',headers:{'Idempotency-Key':key},body:signature});setReceipt(result.escrowReceiptId);clear();}catch(e){setError(e instanceof Error?e.message:'Checkout failed.');}finally{setSubmitting(false);}};
   const copy=async()=>{await navigator.clipboard.writeText(receipt);};
   if(!open)return null;
@@ -23,7 +23,7 @@ export function CartDrawer(){
         <p className="estimate-note">Estimate only · source: seed-tariff-v1 · rates are not legally authoritative.</p>
       </div>
       {error&&<p role="alert" className="form-error">{error}</p>}
-      <div className="drawer-actions"><button className="button button-primary w-full" disabled={loadingQuote||!quote||submitting} onClick={()=>void checkout()}>{submitting?'Securing order…':user?'Create simulated escrow':'Sign in to continue'} <ArrowRight size={17}/></button><button className="text-link" onClick={()=>setOpen(false)}>Continue shopping</button></div>
+      <div className="drawer-actions"><button className="button button-primary w-full" disabled={loadingQuote||!quote||quotedSignature!==signature||submitting} onClick={()=>void checkout()}>{submitting?'Securing order…':user?'Create simulated escrow':'Sign in to continue'} <ArrowRight size={17}/></button><button className="text-link" onClick={()=>setOpen(false)}>Continue shopping</button></div>
     </>}
   </aside></div>;
 }
