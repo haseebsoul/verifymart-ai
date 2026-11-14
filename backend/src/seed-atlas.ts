@@ -146,9 +146,11 @@ async function seed():Promise<void> {
     if(await threatCollection.countDocuments()===0) {
       const lowStock=await products.find({status:'low_stock'}).limit(2).toArray();
       for(let i=0;i<lowStock.length;i++) {
+        const product=lowStock[i];
+        if(!product) continue;
         await threatCollection.insertOne({
           _id:'threat_stock_'+(i+1),type:'Low stock',severity:'WARN',
-          productId:lowStock[i]._id,detectedAt:now,resolvedAt:null
+          productId:product._id,detectedAt:now,resolvedAt:null
         });
       }
       const auditFlag=await products.findOne({status:'audit_flag'});
@@ -197,7 +199,10 @@ async function seed():Promise<void> {
         ['trust_1',80,'On-time fulfillment'],['trust_2',120,'Verified provenance'],
         ['trust_3',65,'Low dispute rate'],['trust_4',100,'Consistent SLA']
       ] as const;
-      for(const [id,delta,reason] of demoEntries) {
+      for(let i=0;i<demoEntries.length;i++) {
+        const entry=demoEntries[i];
+        if(!entry) continue;
+        const [id,delta,reason]=entry;
         await trust.updateOne({_id:id},{$setOnInsert:{
           _id:id,merchantId:'merchant_demo',delta,reason,
           at:new Date(now.getTime()-(4-i)*86_400_000)
