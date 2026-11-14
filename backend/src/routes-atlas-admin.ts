@@ -17,7 +17,7 @@ atlasAdminRouter.get('/admin/users', ...adminOnly, asyncHandler(async (_req, res
     .sort({ createdAt: 1 })
     .limit(500)
     .toArray();
-  res.json({ users });
+  res.json({ users: users.map(user => ({ id: user._id, name: user.name, email: user.email, role: user.role, lastLogin: user.lastLogin, createdAt: user.createdAt, disabledAt: user.disabledAt ?? null })) });
 }));
 
 atlasAdminRouter.patch('/admin/users/:id/role', ...adminOnly, asyncHandler(async (req, res) => {
