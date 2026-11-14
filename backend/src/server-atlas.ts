@@ -44,7 +44,7 @@ async function resolveSocketContext(protocolHeader: string | undefined): Promise
   });
   if (!user) throw new Error('WEBSOCKET_UNAUTHORIZED');
 
-  const context: { userId: string; role: string; merchantId?: string } = {
+  const context: SocketContext = {
     userId: user._id,
     role: user.role,
     expiresAt: decoded.exp
