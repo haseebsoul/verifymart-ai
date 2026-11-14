@@ -270,7 +270,7 @@ atlasMerchantRouter.post(
       res.status(403).json({ error: { code: 'MERCHANT_ACCESS_DENIED', message: 'An eligible merchant profile is required.', requestId: req.requestId } });
       return;
     }
-    const allowedStates = merchant.status === 'pending' ? ['draft'] : ['draft','published'];
+    const allowedStates: Array<'draft' | 'published'> = merchant.status === 'pending' ? ['draft'] : ['draft','published'];
     const archived = await getAtlasDb().collection<ProductDocument>('products').updateOne(
       { _id: productId, merchantId, managedBy: 'merchant', listingStatus: { $in: allowedStates } },
       { $set: { listingStatus: 'archived', updatedAt: new Date() } }
