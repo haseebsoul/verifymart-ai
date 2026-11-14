@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "tsx src/seed.ts",
+    "migrate:atlas": "tsx src/migrations/sqlite-to-atlas.ts",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src test"
@@ -23,6 +24,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.9.0",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "ws": "^8.18.0",
