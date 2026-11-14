@@ -148,21 +148,23 @@ async function seed():Promise<void> {
     }
 
     const threatCollection=database.collection<ThreatDocument>('threats');
-    if(await threatCollection.countDocuments()===0) {
-      const lowStock=await products.find({status:'low_stock'}).limit(2).toArray();
-      for(let i=0;i<lowStock.length;i++) {
-        const product=lowStock[i];
-        if(!product) continue;
-        await threatCollection.insertOne({
-          _id:'threat_stock_'+(i+1),type:'Low stock',severity:'WARN',
-          productId:product._id,detectedAt:now,resolvedAt:null
-        });
-      }
-      const auditFlag=await products.findOne({status:'audit_flag'});
-      if(auditFlag) await threatCollection.insertOne({
+    const lowStock=await products.find({status:'low_stock'}).sort({_id:1}).limit(2).toArray();
+    for(let i=0;i<lowStock.length;i++) {
+      const product=lowStock[i];
+      if(!product) continue;
+      const threat:ThreatDocument={
+        _id:'threat_stock_'+(i+1),type:'Low stock',severity:'WARN',
+        productId:product._id,detectedAt:now,resolvedAt:null
+      };
+      await threatCollection.updateOne({_id:threat._id},{$setOnInsert:threat},{upsert:true});
+    }
+    const auditFlag=await products.findOne({status:'audit_flag'});
+    if(auditFlag) {
+      const threat:ThreatDocument={
         _id:'threat_auth_1',type:'Counterfeit signal',severity:'CRITICAL',
         productId:auditFlag._id,detectedAt:now,resolvedAt:null
-      });
+      };
+      await threatCollection.updateOne({_id:threat._id},{$setOnInsert:threat},{upsert:true});
     }
 
     const settingDefaults:[string,number][]=[
