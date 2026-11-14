@@ -74,3 +74,12 @@ Exact feature-branch head `97e8af5d1cdd68f267ea36e7e9832965f93a1d1c` passed GitH
 The latest code adds shopper order history and merchant application UI, merchant listing edit/archive/resubmission, admin merchant/listing reads and moderation, and server quote freshness checks. This is not a live Atlas integration test: there are still no dedicated application and audit credentials or confirmed app-host network allowlist. No app startup against this database, seed or migration was run.
 
 Admin hub and tariff-rule CRUD integration remains missing. Full Supertest permission/negative-case coverage, five-role Playwright journeys, axe checks and the SRS coverage threshold also remain outstanding. Keep PR #1 in draft until those requirements are evidenced.
+
+
+## Administrator reference data and latest verification — 2026-11-14
+
+The Atlas-backed admin API and dashboard now support hub create/edit/retire and tariff-rule create/update/delete, with audit entries. Hub records are retired rather than deleted. Destination base tariff rules cannot be deleted. The merchant approval transaction verifies that the applicant account is active and retains the merchant role before it publishes drafts. Duty quotes apply the same public-product visibility gate as the catalog.
+
+GitHub Actions run **43655633531** passed on implementation commit `b8869fdc7d5ddff028c8618907a05c6da4ba3e75`: install, type-check, build, backend tests (4 files), frontend tests (1 file), ESLint and color lint. Backend coverage was 15.02% statements/lines, 51.61% branches and 31.70% functions, below the SRS 80% target.
+
+External Atlas startup with app/audit principals is still blocked because those credentials and app-host network access are not provisioned. No seed or migration was run. The collection/index inspection was read-only. Full API authorization tests, five-role Playwright, axe/WCAG acceptance and secret scanning remain open release gates.
