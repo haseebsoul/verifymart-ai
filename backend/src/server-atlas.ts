@@ -16,13 +16,14 @@ const contexts = new WeakMap<WebSocket, {
   userId?: string;
   role?: string;
   merchantId?: string;
+  expiresAt?: number;
 }>();
 
 function send(socket: WebSocket, event: Record<string, unknown>): void {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event));
 }
 
-type SocketContext = { userId?: string; role?: string; merchantId?: string };
+type SocketContext = { userId?: string; role?: string; merchantId?: string; expiresAt?: number };
 
 async function resolveSocketContext(protocolHeader: string | undefined): Promise<SocketContext> {
   const protocols = (protocolHeader ?? '').split(',').map(value => value.trim());
@@ -34,7 +35,7 @@ async function resolveSocketContext(protocolHeader: string | undefined): Promise
   if (!secret || !token) throw new Error('WEBSOCKET_UNAUTHORIZED');
 
   const decoded = jwt.verify(token, secret);
-  if (typeof decoded === 'string' || typeof decoded.sub !== 'string') throw new Error('WEBSOCKET_UNAUTHORIZED');
+  if (typeof decoded === 'string' || typeof decoded.sub !== 'string' || typeof decoded.exp !== 'number') throw new Error('WEBSOCKET_UNAUTHORIZED');
 
   const database = getAtlasDb();
   const user = await database.collection<UserDocument>('users').findOne({
@@ -45,7 +46,8 @@ async function resolveSocketContext(protocolHeader: string | undefined): Promise
 
   const context: { userId: string; role: string; merchantId?: string } = {
     userId: user._id,
-    role: user.role
+    role: user.role,
+    expiresAt: decoded.exp
   };
   if (user.role === 'merchant') {
     const merchant = await database.collection<MerchantDocument>('merchants').findOne({
@@ -104,6 +106,11 @@ async function broadcastSnapshots(): Promise<void> {
     const context = contexts.get(socket);
     if (!context?.userId) {
       send(socket, { type: 'PUBLIC_STATUS', simulated: true, hubs: publicHubs });
+      continue;
+    }
+
+    if (context.expiresAt !== undefined && Date.now() >= context.expiresAt * 1000) {
+      socket.close(4401, 'Session expired. Reconnect.');
       continue;
     }
 
