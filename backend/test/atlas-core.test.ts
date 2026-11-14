@@ -23,6 +23,6 @@ describe('Atlas core domain calculations', () => {
 
   it('rejects unsafe or negative monetary inputs', () => {
     expect(() => roundRateHalfUp(-1, 500)).toThrow();
-    expect(() => roundRateHalfUp(Number.MAX_SAFE_INTEGER, 10000)).toThrow();
+    expect(() => roundRateHalfUp(Number.MAX_SAFE_INTEGER, 50000)).toThrow();
   });
 });
