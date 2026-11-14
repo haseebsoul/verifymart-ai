@@ -65,3 +65,12 @@ The normal branch CI run 43654588715 passed on commit `7c0c276e2ba2232bfb465da5f
 At the time of the check, document counts remained: users 0, merchants 0, products 0, hubs 5, tariffRules 78, orders 0, threats 0, inventoryAdjustments 0, auditLog 0, trustLedger 0, settings 3. The seed utility was not run. No SQLite-to-Atlas migration was run.
 
 The backend test suite had 4 files/16 tests and 15.48% statement/line coverage (52.19% branch, 36.11% function) in that CI run. The 80% SRS core-service coverage gate, complete endpoint/RBAC suites, all five Playwright role journeys and axe accessibility acceptance remain open. The dev cluster is M0 and must not be used as evidence of production readiness.
+
+
+## Final code/CI checkpoint — 2026-11-14
+
+Exact feature-branch head `97e8af5d1cdd68f267ea36e7e9832965f93a1d1c` passed GitHub Actions run 43655171302: npm install, shared/backend/frontend type-check, build, backend and frontend Vitest suites, ESLint and color lint. Backend coverage was 14.81% statements/lines, 51.33% branches, 36.11% functions, below the SRS 80% core-service acceptance target.
+
+The latest code adds shopper order history and merchant application UI, merchant listing edit/archive/resubmission, admin merchant/listing reads and moderation, and server quote freshness checks. This is not a live Atlas integration test: there are still no dedicated application and audit credentials or confirmed app-host network allowlist. No app startup against this database, seed or migration was run.
+
+Admin hub and tariff-rule CRUD integration remains missing. Full Supertest permission/negative-case coverage, five-role Playwright journeys, axe checks and the SRS coverage threshold also remain outstanding. Keep PR #1 in draft until those requirements are evidenced.
