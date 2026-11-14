@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 export const DESTINATIONS = ['US', 'UK', 'EU', 'AE', 'PK', 'SG'] as const;
-export const ROLES = ['user', 'operator', 'admin'] as const;
+export const ATLAS_ROLES = ['shopper', 'merchant', 'inventory_manager', 'operator', 'admin'] as const;
+export const LEGACY_ROLES = ['user', 'operator', 'admin'] as const;
+export const ROLES = ATLAS_ROLES;
 export const CATEGORIES = ['Audio and Studio', 'Precision Horology', 'Edge Computing', 'Optics and Gear'] as const;
 export const ORDER_STATES = ['held', 'released', 'refunded', 'on_hold'] as const;
 export const DESTINATION_NAMES: Record<(typeof DESTINATIONS)[number], string> = {
@@ -24,10 +26,14 @@ export const settingSchema = z.object({
   customsSurgeBuffer: z.number().int().min(0).max(100).optional(),
   maxEscrowHoldHours: z.number().int().min(1).max(720).optional()
 }).refine(v => Object.keys(v).length > 0);
-export const roleSchema = z.object({ role: z.enum(ROLES) });
+export const atlasRoleSchema = z.object({ role: z.enum(ATLAS_ROLES) });
+// Legacy SQLite compatibility schema; not used by the Atlas API.
+export const roleSchema = z.object({ role: z.enum(LEGACY_ROLES) });
 export const simulationSchema = z.object({ type: z.enum(['customs_hold', 'counterfeit_surge', 'auto_rebalance']) });
 
-export type Role = (typeof ROLES)[number];
+export type AtlasRole = (typeof ATLAS_ROLES)[number];
+export type LegacyRole = (typeof LEGACY_ROLES)[number];
+export type Role = AtlasRole | LegacyRole;
 export type Destination = (typeof DESTINATIONS)[number];
 export type ProductCategory = (typeof CATEGORIES)[number];
 export interface PublicUser { id: string; name: string; email: string; role: Role; createdAt: string }
