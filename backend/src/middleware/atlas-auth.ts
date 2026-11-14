@@ -11,12 +11,10 @@ export interface AtlasPrincipal {
   merchantId?: string;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      atlasPrincipal?: AtlasPrincipal;
-      merchantId?: string;
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    atlasPrincipal?: AtlasPrincipal;
+    merchantId?: string;
   }
 }
 
