@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Collection } from 'mongodb';
-import { getAtlasDb } from '../infrastructure/atlas.js';
-import type { MerchantDocument, MerchantState, ProductDocument } from './contracts.js';
+import { getAtlasClient, getAtlasDb } from '../infrastructure/atlas.js';
+import type { MerchantDocument, MerchantState, ProductDocument, UserDocument } from './contracts.js';
 import { appendAuditEvent } from './audit.js';
 
 export class MongoMerchantRepository {
@@ -48,24 +48,57 @@ export class MongoMerchantRepository {
     }
 
     const now = new Date();
-    const merchant = await this.merchants().findOneAndUpdate(
-      { _id: merchantId, status: 'pending' },
-      {
-        $set: {
-          status: decision,
-          updatedAt: now,
-          ...(decision === 'rejected' ? { rejectionReason: explanation } : {})
-        }
-      },
-      { returnDocument: 'after' }
-    );
-    if (!merchant) return null;
+    const database = getAtlasDb();
+    const session = getAtlasClient().startSession();
+    let merchant: MerchantDocument | null = null;
+    try {
+      await session.withTransaction(async () => {
+        const pending = await this.merchants().findOne(
+          { _id: merchantId, status: 'pending' },
+          { session }
+        );
+        if (!pending) return;
 
-    const products = getAtlasDb().collection<ProductDocument>('products');
-    await products.updateMany(
-      { merchantId, managedBy: 'merchant', listingStatus: 'draft' },
-      { $set: { listingStatus: decision === 'approved' ? 'published' : 'archived', updatedAt: now } }
-    );
+        const owner = await database.collection<UserDocument>('users').findOne({
+          _id: pending.userId,
+          role: 'merchant',
+          $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+        }, { session });
+        if (!owner) {
+          throw Object.assign(new Error('The applicant account is disabled or no longer has the merchant role.'), {
+            status: 409,
+            code: 'MERCHANT_OWNER_NOT_ELIGIBLE'
+          });
+        }
+
+        merchant = await this.merchants().findOneAndUpdate(
+          { _id: merchantId, status: 'pending' },
+          {
+            $set: {
+              status: decision,
+              updatedAt: now,
+              ...(decision === 'rejected' ? { rejectionReason: explanation } : {})
+            }
+          },
+          { session, returnDocument: 'after' }
+        );
+        if (!merchant) {
+          throw Object.assign(new Error('The merchant application changed concurrently.'), {
+            status: 409,
+            code: 'MERCHANT_DECISION_CONFLICT'
+          });
+        }
+
+        await database.collection<ProductDocument>('products').updateMany(
+          { merchantId, managedBy: 'merchant', listingStatus: 'draft' },
+          { $set: { listingStatus: decision === 'approved' ? 'published' : 'archived', updatedAt: now } },
+          { session }
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
+    if (!merchant) return null;
     await appendAuditEvent({
       actorId,
       action: decision === 'approved' ? 'MERCHANT_APPROVED' : 'MERCHANT_REJECTED',
