@@ -1,4 +1,5 @@
 import { Db, MongoClient, type Collection, type Document } from 'mongodb';
+import type { AuditLogDocument } from '../repositories/contracts.js';
 import { ensureAtlasIndexes } from './indexes.js';
 
 export const ATLAS_COLLECTIONS = [
@@ -76,7 +77,7 @@ export async function connectAtlas(): Promise<Db> {
  * auditLog only; do not grant update/remove. The ordinary app URI must not be
  * used to append audit entries.
  */
-export async function connectAuditLog(): Promise<Collection<Document>> {
+export async function connectAuditLog(): Promise<Collection<AuditLogDocument>> {
   if (auditDb) return auditDb.collection('auditLog');
   const uri = requiredEnv('MONGODB_AUDIT_URI');
   const databaseName = requiredEnv('MONGODB_DB_NAME');
@@ -89,10 +90,10 @@ export async function connectAuditLog(): Promise<Collection<Document>> {
     const database = client.db(databaseName);
     await database.command({ ping: 1 });
     // This read confirms that the URI can access the collection without testing writes.
-    await database.collection('auditLog').findOne({}, { projection: { _id: 1 } });
+    await database.collection<AuditLogDocument>('auditLog').findOne({}, { projection: { _id: 1 } });
     auditClient = client;
     auditDb = database;
-    return database.collection('auditLog');
+    return database.collection<AuditLogDocument>('auditLog');
   } catch (error) {
     await client.close().catch(() => undefined);
     throw error;
