@@ -4,7 +4,9 @@ import type { Role } from '@verifymart/shared';
 import { db } from '../db.js';
 
 export interface AuthUser { id: string; name: string; email: string; role: Role }
-declare global { namespace Express { interface Request { user?: AuthUser; requestId?: string } } }
+declare module 'express-serve-static-core' {
+  interface Request { user?: AuthUser; requestId?: string }
+}
 const secret = (): string => {
   const configured = process.env.JWT_ACCESS_SECRET;
   if (process.env.NODE_ENV === 'production' && !configured) throw new Error('JWT_ACCESS_SECRET must be configured in production.');
