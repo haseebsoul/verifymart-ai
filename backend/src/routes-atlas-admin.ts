@@ -1,13 +1,12 @@
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
-import { Long, MongoServerError } from 'mongodb';
 import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/atlas-auth.js';
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { MongoMerchantRepository } from './repositories/merchants.js';
-import type { MerchantDocument, Role, UserDocument } from './repositories/contracts.js';
+import type { UserDocument } from './repositories/contracts.js';
 
 export const atlasAdminRouter = Router();
 const adminOnly = [authenticateAtlas, requireAtlasRoleAndOwnership(['admin'])];
@@ -115,10 +114,3 @@ atlasAdminRouter.post('/admin/merchants/:id/decision', ...adminOnly, asyncHandle
   res.json({ merchant });
 }));
 
-export function asRole(value: string): Role | null {
-  return ['shopper','merchant','inventory_manager','operator','admin'].includes(value) ? value as Role : null;
-}
-
-void Long;
-void MongoServerError;
-void MerchantDocument;
