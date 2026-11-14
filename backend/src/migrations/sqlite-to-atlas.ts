@@ -28,15 +28,17 @@ function toLong(value: unknown): Long {
   return Long.fromNumber(number);
 }
 
-function toJsonObject(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'string' || !value) return {};
+function toJsonObject(value: unknown, context: string): Record<string, unknown> {
+  if (value === null || value === undefined || value === '') return {};
+  if (typeof value !== 'string') throw new Error('Invalid JSON source value for ' + context + '; migration aborted to avoid discarding data.');
   try {
     const parsed: unknown = JSON.parse(value);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('Expected a JSON object.');
+    }
+    return parsed as Record<string, unknown>;
   } catch {
-    return {};
+    throw new Error('Invalid JSON source value for ' + context + '; migration aborted to avoid discarding data.');
   }
 }
 
@@ -172,7 +174,7 @@ function buildCollections(database: Database.Database): TargetCollection[] {
   const idempotency = sourceRows(database, tables, 'idempotency_keys');
   const idempotencyByOrder = new Map<string, {key:string;requestHash:string}>();
   for (const entry of idempotency) {
-    const response = toJsonObject(entry.response_json);
+    const response = toJsonObject(entry.response_json, 'idempotency key ' + String(entry.key));
     const orderId = typeof response.orderId === 'string' ? response.orderId : '';
     if (orderId) idempotencyByOrder.set(orderId, {
       key: String(entry.key),
@@ -241,7 +243,7 @@ function buildCollections(database: Database.Database): TargetCollection[] {
     action: String(row.action),
     targetType: String(row.target_type),
     targetId: String(row.target_id),
-    details: toJsonObject(row.details_json),
+    details: toJsonObject(row.details_json, 'audit record ' + String(row.id)),
     at: toDate(row.at),
     migratedFrom: 'sqlite-v1'
   }));
@@ -305,11 +307,47 @@ async function main(): Promise<void> {
       return;
     }
 
+
+    // Never replace or silently merge an existing target record. A migration
+    // target must be free of every source _id before the first write begins.
+    const appPlan = plan.filter((item) => item.name !== 'auditLog');
+    for (const collection of appPlan) {
+      const ids = collection.documents.map(document => document._id);
+      if (!ids.length) continue;
+      const collisions = await database.collection(collection.name)
+        .find({ _id: { $in: ids } }, { projection: { _id: 1 } }).limit(20).toArray();
+      if (collisions.length) {
+        throw new Error('Migration target already contains ' + collection.name + ' IDs (' +
+          collisions.map(document => String(document._id)).join(', ') +
+          '). No migration writes were performed; use a clean staging target or reconcile the conflicts manually.');
+      }
+    }
+    const auditDocuments = plan.find((item) => item.name === 'auditLog')!.documents;
+    if (auditDocuments.length) {
+      const auditUri = requiredEnv('MONGODB_AUDIT_MIGRATION_URI');
+      const auditClient = new MongoClient(auditUri, { appName: 'VerifyMart-Audit-Migration-Preflight' });
+      try {
+        await auditClient.connect();
+        const auditCollection = auditClient.db(targetName).collection('auditLog');
+        const collisions = await auditCollection.find(
+          { _id: { $in: auditDocuments.map(document => document._id) } },
+          { projection: { _id: 1 } }
+        ).limit(20).toArray();
+        if (collisions.length) {
+          throw new Error('Migration target already contains auditLog IDs (' +
+            collisions.map(document => String(document._id)).join(', ') +
+            '). No migration writes were performed; use a clean staging target or reconcile the conflicts manually.');
+        }
+      } finally {
+        await auditClient.close();
+      }
+    }
+
     for (const collection of plan) {
       if (collection.name === 'auditLog') continue;
       if (collection.documents.length === 0) continue;
       const operations: AnyBulkWriteOperation<Document>[] = collection.documents.map((document) => ({
-        replaceOne: { filter: { _id: document._id }, replacement: document, upsert: true }
+        insertOne: { document }
       }));
       await database.collection(collection.name).bulkWrite(operations, { ordered: true });
     }
