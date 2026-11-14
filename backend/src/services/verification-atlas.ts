@@ -8,24 +8,40 @@ export interface AtlasVerificationResult {
   simulated: true;
   recordType: 'product' | 'order' | 'not_found';
   authenticityNote: string;
+  authenticityScore?: number;
   product?: {
     id: string;
     sku: string;
     name: string;
     brand: string;
-    authenticityScore: number;
+    category: string;
+    priceUsd: number;
     status: ProductDocument['status'];
+    authenticityScore: number;
     batchHash: string;
-    provenanceEvents: ProductDocument['provenanceEvents'];
-    evidenceCount: number;
-    evidenceComplete: boolean;
+    hsCode: string;
+    originHubId: string;
   };
+  certificate?: {
+    factory: string;
+    batchHash: string;
+    hsCode: string;
+    issuedAt: string;
+  };
+  timeline?: Array<{
+    id: string;
+    stage: string;
+    hubId: string;
+    occurredAt: string;
+    hash: string;
+  }>;
   order?: {
     id: string;
     state: OrderDocument['state'];
     destination: string;
-    createdAt: Date;
-    items: OrderDocument['items'];
+    createdAt: string;
+    items: Array<{ productId: string; sku: string; name: string; quantity: number }>;
+    totalUsd: number;
   };
 }
 
@@ -46,18 +62,33 @@ export async function verifyAtlasQuery(query: string): Promise<AtlasVerification
       simulated: true,
       recordType: 'product',
       authenticityNote,
+      authenticityScore: product.authenticityScore,
       product: {
         id: product._id,
         sku: product.sku,
         name: product.name,
         brand: product.brand,
-        authenticityScore: product.authenticityScore,
+        category: product.category,
+        priceUsd: product.priceCents.toNumber() / 100,
         status: product.status,
+        authenticityScore: product.authenticityScore,
         batchHash: product.batchHash,
-        provenanceEvents: events,
-        evidenceCount: events.length,
-        evidenceComplete: events.length >= 4
-      }
+        hsCode: product.hsCode,
+        originHubId: product.originHubId
+      },
+      certificate: {
+        factory: 'Application-generated verification record — not a manufacturer certificate',
+        batchHash: product.batchHash,
+        hsCode: product.hsCode,
+        issuedAt: (events[0]?.occurredAt ?? product.createdAt).toISOString()
+      },
+      timeline: events.map(event => ({
+        id: event.id,
+        stage: event.stage,
+        hubId: event.hubId,
+        occurredAt: event.occurredAt.toISOString(),
+        hash: event.hash
+      }))
     };
   }
 
@@ -73,8 +104,14 @@ export async function verifyAtlasQuery(query: string): Promise<AtlasVerification
         id: order._id,
         state: order.state,
         destination: order.destination,
-        createdAt: order.createdAt,
-        items: order.items
+        createdAt: order.createdAt.toISOString(),
+        items: order.items.map(item => ({
+          productId: item.productId,
+          sku: item.sku,
+          name: item.name,
+          quantity: item.quantity
+        })),
+        totalUsd: order.quote.totalCents.toNumber() / 100
       }
     };
   }
