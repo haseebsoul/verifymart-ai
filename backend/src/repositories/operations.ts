@@ -76,7 +76,7 @@ export class MongoOperationsRepository {
       .toArray();
   }
 
-  async recordTrustEntry(input: Omit<TrustLedgerDocument, '_id' | 'at'>): Promise<TrustLedgerDocument> {
+  async recordTrustEntry(input: { merchantId: string; delta: number; reason: string }): Promise<TrustLedgerDocument> {
     const row: TrustLedgerDocument = {
       ...input,
       _id: 'trl_' + randomUUID().replaceAll('-', '').slice(0, 18),
