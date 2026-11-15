@@ -52,7 +52,8 @@ try {
   if (-not (Test-Path -LiteralPath $envPath)) {
     if (-not (Test-Path -LiteralPath $examplePath)) { throw 'The repository .env.example file is missing.' }
     $randomBytes = New-Object byte[] 48
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($randomBytes)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($randomBytes) } finally { $rng.Dispose() }
     $jwtSecret = [Convert]::ToBase64String($randomBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
     Write-EnvFile -Path $envPath -Lines @(
       'NODE_ENV=development',
@@ -111,26 +112,26 @@ try {
   try {
     if (-not $SkipInstall) {
       Write-Host 'Installing workspace dependencies...' -ForegroundColor Cyan
-      npm install
+      npm.cmd install
       if ($LASTEXITCODE -ne 0) { throw 'npm install failed.' }
     }
 
     if (-not $SkipSeed) {
       Write-Host 'Running the development-only Atlas seed (verifymart_dev)...' -ForegroundColor Cyan
-      npm run seed
+      npm.cmd run seed
       if ($LASTEXITCODE -ne 0) { throw 'Atlas seed failed. Check the error above; no production database should be used.' }
     }
 
     if (-not $SkipBuild) {
       Write-Host 'Building shared, backend and frontend workspaces...' -ForegroundColor Cyan
-      npm run build
+      npm.cmd run build
       if ($LASTEXITCODE -ne 0) { throw 'The project build failed.' }
     }
 
     Write-Host ''
     Write-Host 'Starting VerifyMart: API http://localhost:8000, web app http://localhost:5173' -ForegroundColor Green
     Write-Host 'Press Ctrl+C in this window to stop both local processes.'
-    npm run dev
+    npm.cmd run dev
     if ($LASTEXITCODE -ne 0) { throw 'VerifyMart stopped with an error.' }
   } finally {
     Pop-Location
