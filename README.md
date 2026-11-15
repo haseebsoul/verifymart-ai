@@ -218,3 +218,6 @@ Before rerunning it, provision the separate Atlas app and audit users in the Atl
 Optional five-role demo accounts are created only when `DEMO_PASSWORD` is configured (10+ characters) before the seed runs. All five share that local-only password. Their emails are `admin@verifymart.ai`, `auditor@verifymart.ai`, `shopper@verifymart.ai`, `inventory@verifymart.ai`, and `merchant@verifymart.ai`. Without `DEMO_PASSWORD`, visitors can browse the seeded public catalogue and shoppers can register normally; no prebuilt admin credentials are present.
 
 The catalogue and provenance history created by the seed are explicitly simulated development fixtures. They do not represent actual supplier inventory, independently verified warehouse stock, manufacturer-signed evidence, live customs rates, or real payments. Karachi / HUB-KHI remains a proposed demo hub, not a verified facility.
+
+
+Full manual for Atlas custom roles, separate users, local environment and startup: [docs/WINDOWS_LOCAL_SETUP.md](docs/WINDOWS_LOCAL_SETUP.md).
