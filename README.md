@@ -200,3 +200,21 @@ Do not use the existing legacy Atlas database `verifymart_v14` as the target. It
 - Escrow/order state is simulated; no payment or funds transfer occurs.
 - Telemetry and threat signals are simulated; there is no live network attack or threat-intelligence source.
 - SRE targets are not measured service-level results until monitoring data exists.
+
+
+## Windows development station
+
+For a guarded local setup on Windows, run PowerShell from the repository root:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\Start-VerifyMart-Windows.ps1
+```
+
+On first run the launcher creates `backend/.env`, generates a local development JWT secret, and stops safely until both Atlas connection URIs are configured. It fixes the target database to `verifymart_dev`, displays the PC's public IPv4 for a narrow Atlas allowlist entry, installs workspace dependencies, runs the development-only Atlas seed, builds the app, and starts the API and Vite UI. The launcher never changes Atlas network access itself and never configures a wildcard IP allowlist.
+
+Before rerunning it, provision the separate Atlas app and audit users in the Atlas console and put their URIs in `backend/.env`. The app principal must not have access to `auditLog`; the audit principal must have only `find` and `insert` on `verifymart_dev.auditLog`. Use Atlas custom database roles to enforce those restrictions. Never reuse the legacy `verifymart_app` principal or target `verifymart_v14`.
+
+Optional five-role demo accounts are created only when `DEMO_PASSWORD` is configured (10+ characters) before the seed runs. All five share that local-only password. Their emails are `admin@verifymart.ai`, `auditor@verifymart.ai`, `shopper@verifymart.ai`, `inventory@verifymart.ai`, and `merchant@verifymart.ai`. Without `DEMO_PASSWORD`, visitors can browse the seeded public catalogue and shoppers can register normally; no prebuilt admin credentials are present.
+
+The catalogue and provenance history created by the seed are explicitly simulated development fixtures. They do not represent actual supplier inventory, independently verified warehouse stock, manufacturer-signed evidence, live customs rates, or real payments. Karachi / HUB-KHI remains a proposed demo hub, not a verified facility.
