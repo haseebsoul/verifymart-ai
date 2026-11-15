@@ -108,6 +108,47 @@ try {
     throw 'JWT_ACCESS_SECRET must be a non-placeholder secret of at least 32 characters in backend/.env.'
   }
 
+  # dotenv loads from the repository working directory by default. Export the
+  # ignored backend/.env values into this launcher process so npm child
+  # processes (seed, server and Vite) inherit them without printing secrets.
+  foreach ($key in $envValues.Keys) {
+    if ($key -match '^[A-Za-z_][A-Za-z0-9_]*
+  try {
+    if (-not $SkipInstall) {
+      Write-Host 'Installing workspace dependencies...' -ForegroundColor Cyan
+      npm.cmd install
+      if ($LASTEXITCODE -ne 0) { throw 'npm install failed.' }
+    }
+
+    if (-not $SkipSeed) {
+      Write-Host 'Running the development-only Atlas seed (verifymart_dev)...' -ForegroundColor Cyan
+      npm.cmd run seed
+      if ($LASTEXITCODE -ne 0) { throw 'Atlas seed failed. Check the error above; no production database should be used.' }
+    }
+
+    if (-not $SkipBuild) {
+      Write-Host 'Building shared, backend and frontend workspaces...' -ForegroundColor Cyan
+      npm.cmd run build
+      if ($LASTEXITCODE -ne 0) { throw 'The project build failed.' }
+    }
+
+    Write-Host ''
+    Write-Host 'Starting VerifyMart: API http://localhost:8000, web app http://localhost:5173' -ForegroundColor Green
+    Write-Host 'Press Ctrl+C in this window to stop both local processes.'
+    npm.cmd run dev
+    if ($LASTEXITCODE -ne 0) { throw 'VerifyMart stopped with an error.' }
+  } finally {
+    Pop-Location
+  }
+} catch {
+  Write-Error $_
+  exit 1
+}
+) {
+      [Environment]::SetEnvironmentVariable($key, [string]$envValues[$key], 'Process')
+    }
+  }
+
   Push-Location $repoRoot
   try {
     if (-not $SkipInstall) {
