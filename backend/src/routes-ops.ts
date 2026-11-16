@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DESTINATIONS, roleSchema, restockSchema, inventoryPatchSchema, settingSchema, simulationSchema, threatResolveSchema } from '@verifymart/shared';
 import { db, dollars, audit, cryptoId, nowIso } from './db.js';
 import { authenticate, requireRole } from './middleware/auth.js';
-import { asyncHandler, parseBody } from './middleware/http.js';
+import { parseBody } from './middleware/http.js';
 import { publishEvent } from './telemetry.js';
 
 export const opsRouter = Router();
@@ -32,17 +32,18 @@ opsRouter.get('/threats', ...operator, (_req,res) => {
 });
 opsRouter.post('/inventory/restock/:id', ...operator, (req,res) => {
   const body = parseBody(restockSchema, req.body ?? {});
+  const quantity = body.quantity ?? 1;
   const threat = db.prepare('SELECT id,product_id,type FROM threats WHERE id=? AND resolved_at IS NULL').get(req.params.id) as {id:string;product_id:string;type:string} | undefined;
   const productId = threat?.product_id ?? req.params.id;
   const product = db.prepare('SELECT id,sku,stock,reorder_threshold FROM products WHERE id=?').get(productId) as {id:string;sku:string;stock:number;reorder_threshold:number} | undefined;
   if (!product) { res.status(404).json({error:{code:'INVENTORY_NOT_FOUND',message:'Threat or product was not found.',requestId:req.requestId}}); return; }
   const transaction = db.transaction(() => {
-    db.prepare("UPDATE products SET stock=stock+?,status=CASE WHEN EXISTS (SELECT 1 FROM threats WHERE product_id=? AND resolved_at IS NULL AND type!='Low stock') THEN 'audit_flag' WHEN ?=1 AND stock+? > reorder_threshold THEN 'verified' WHEN stock+? <= reorder_threshold THEN 'low_stock' ELSE status END WHERE id=?").run(body.quantity,product.id,threat?.type === 'Low stock' ? 1 : 0,body.quantity,body.quantity,product.id);
+    db.prepare("UPDATE products SET stock=stock+?,status=CASE WHEN EXISTS (SELECT 1 FROM threats WHERE product_id=? AND resolved_at IS NULL AND type!='Low stock') THEN 'audit_flag' WHEN ?=1 AND stock+? > reorder_threshold THEN 'verified' WHEN stock+? <= reorder_threshold THEN 'low_stock' ELSE status END WHERE id=?").run(quantity,product.id,threat?.type === 'Low stock' ? 1 : 0,quantity,quantity,product.id);
     if (threat) db.prepare('UPDATE threats SET resolved_at=? WHERE id=?').run(nowIso(),threat.id);
-    audit(req.user!.id,'INVENTORY_RESTOCKED','product',product.id,{quantity:body.quantity,threatId:threat?.id ?? null});
+    audit(req.user!.id,'INVENTORY_RESTOCKED','product',product.id,{quantity:quantity,threatId:threat?.id ?? null});
   });
   transaction(); publishEvent('THREAT_RESOLVED',{threatId:threat?.id ?? null,sku:product.sku});
-  res.json({productId:product.id,sku:product.sku,added:body.quantity,stock:product.stock+body.quantity,resolvedThreatId:threat?.id ?? null});
+  res.json({productId:product.id,sku:product.sku,added:quantity,stock:product.stock+quantity,resolvedThreatId:threat?.id ?? null});
 });
 opsRouter.post('/threats/:id/resolve', ...operator, (req,res) => {
   const {reason} = parseBody(threatResolveSchema, req.body);
@@ -137,5 +138,11 @@ opsRouter.delete('/admin/users/:id', ...admin, (req,res) => {
   const user = db.prepare('SELECT id,email,role FROM users WHERE id=?').get(req.params.id) as {id:string;email:string;role:string} | undefined;
   if (!user) { res.status(404).json({error:{code:'USER_NOT_FOUND',message:'User was not found.',requestId:req.requestId}}); return; }
   if (user.email.toLowerCase() !== email.toLowerCase()) { res.status(400).json({error:{code:'CONFIRMATION_MISMATCH',message:'The confirmation email does not match this user.',requestId:req.requestId}}); return; }
-  audit(req.user!.id,'USER_DELETED','user',user.id,{email:user.email,role:user.role}); db.prepare('DELETE FROM users WHERE id=?').run(user.id); res.status(204).end();
+  const now = nowIso();
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
+    db.prepare('UPDATE users SET disabled_at=? WHERE id=?').run(now,user.id);
+    audit(req.user!.id,'USER_DISABLED','user',user.id,{email:user.email,role:user.role,disabledAt:now});
+  });
+  transaction(); res.status(204).end();
 });

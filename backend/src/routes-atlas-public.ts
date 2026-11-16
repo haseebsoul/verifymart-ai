@@ -1,0 +1,109 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { asyncHandler } from './middleware/http.js';
+import { calculateAtlasDuty, calculatePakistanDemoEstimate } from './services/duty-atlas.js';
+import { verifyAtlasQuery } from './services/verification-atlas.js';
+import { getAtlasDb } from './infrastructure/atlas.js';
+import { MongoProductRepository } from './repositories/products.js';
+
+export const atlasPublicRouter = Router();
+
+const dutySchema = z.object({
+  destinationCountry: z.enum(['US','UK','EU','AE','PK','SG']),
+  items: z.array(z.object({
+    productId: z.string().min(1).max(100),
+    quantity: z.number().int().min(1).max(100)
+  })).min(1).max(50),
+  originCountry: z.string().trim().min(2).max(50).optional(),
+  destinationCity: z.string().trim().min(2).max(80).optional(),
+  taxProfile: z.enum(['filer','non-filer']).optional()
+});
+
+atlasPublicRouter.get('/products', asyncHandler(async (req, res) => {
+  const products = await new MongoProductRepository().findPublic();
+  const category = typeof req.query.category === 'string' ? req.query.category : undefined;
+  const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+  const verifiedOnly = req.query.verifiedOnly === 'true';
+  const sort = req.query.sort === 'price_asc' ? 'price_asc' : req.query.sort === 'price_desc' ? 'price_desc' : req.query.sort === 'authenticity' ? 'authenticity' : 'name';
+  let filtered = products.filter((product) =>
+    (!category || product.category === category) &&
+    (!search || (product.name + ' ' + product.brand + ' ' + product.sku).toLowerCase().includes(search)) &&
+    (!verifiedOnly || product.status === 'verified')
+  );
+  filtered = [...filtered].sort((a,b) => {
+    if (sort === 'price_asc') return a.priceCents.compare(b.priceCents);
+    if (sort === 'price_desc') return b.priceCents.compare(a.priceCents);
+    if (sort === 'authenticity') return b.authenticityScore - a.authenticityScore;
+    return a.name.localeCompare(b.name);
+  });
+  res.json({
+    total: filtered.length,
+    products: filtered.map(product => ({
+      id: product._id,
+      sku: product.sku,
+      batchHash: product.batchHash,
+      hsCode: product.hsCode,
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      priceUsd: product.priceCents.toNumber() / 100,
+      stock: product.stock,
+      reorderThreshold: product.reorderThreshold,
+      originHubId: product.originHubId,
+      authenticityScore: product.authenticityScore,
+      slaHours: product.slaHours,
+      imageUrl: product.imageUrl,
+      status: product.status
+    }))
+  });
+}));
+
+atlasPublicRouter.get('/products/:id', asyncHandler(async (req, res) => {
+  const productId = req.params.id;
+  if (!productId) {
+    res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
+    return;
+  }
+  const product = await new MongoProductRepository().findPublicById(productId);
+  if (!product) {
+    res.status(404).json({ error: { code: 'PRODUCT_NOT_FOUND', message: 'Product was not found.', requestId: req.requestId } });
+    return;
+  }
+  res.json({ product: { ...product, priceUsd: product.priceCents.toNumber() / 100 } });
+}));
+
+
+atlasPublicRouter.get('/hubs', asyncHandler(async (_req, res) => {
+  const hubs = await getAtlasDb().collection('hubs').find({})
+    .sort({ name: 1 }).toArray();
+  res.json({ hubs: hubs.map(hub => ({
+    id: hub._id,
+    code: hub.code,
+    name: hub.name,
+    x: hub.x,
+    y: hub.y,
+    latencyMs: hub.latencyMs,
+    status: hub.status,
+    queueDepth: hub.queueDepth,
+    simulated: true
+  })) });
+}));
+
+atlasPublicRouter.get('/verify/:query', asyncHandler(async (req, res) => {
+  const result = await verifyAtlasQuery(req.params.query ?? '');
+  res.status(result.found ? 200 : 404).json(result);
+}));
+
+atlasPublicRouter.post('/duty/calculate', asyncHandler(async (req, res) => {
+  const input = dutySchema.parse(req.body);
+  if (input.destinationCountry === 'PK') {
+    const quote = await calculatePakistanDemoEstimate(input.items, {
+      originCountry: input.originCountry ?? 'Not specified',
+      destinationCity: input.destinationCity ?? 'Not specified',
+      taxProfile: input.taxProfile ?? 'filer'
+    });
+    res.json(quote);
+    return;
+  }
+  res.json(await calculateAtlasDuty(input.destinationCountry, input.items));
+}));

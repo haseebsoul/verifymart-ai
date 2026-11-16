@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { loginSchema, registerSchema, type PublicUser } from '@verifymart/shared';
-import { db, cryptoId, nowIso, audit } from './db.js';
+import { db, cryptoId, nowIso } from './db.js';
 import { authenticate, issueAccessToken } from './middleware/auth.js';
 import { asyncHandler, parseBody } from './middleware/http.js';
 
@@ -35,9 +35,9 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
 }));
 authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const body = parseBody(loginSchema, req.body);
-  const row = db.prepare('SELECT id,name,email,password_hash,role,failed_logins,locked_until,created_at FROM users WHERE email = ? COLLATE NOCASE').get(body.email) as
-    {id:string;name:string;email:string;password_hash:string;role:PublicUser['role'];failed_logins:number;locked_until:string|null;created_at:string} | undefined;
-  if (!row) { res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.', requestId: req.requestId } }); return; }
+  const row = db.prepare('SELECT id,name,email,password_hash,role,failed_logins,locked_until,disabled_at,created_at FROM users WHERE email = ? COLLATE NOCASE').get(body.email) as
+    {id:string;name:string;email:string;password_hash:string;role:PublicUser['role'];failed_logins:number;locked_until:string|null;disabled_at:string|null;created_at:string} | undefined;
+  if (!row || row.disabled_at) { res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.', requestId: req.requestId } }); return; }
   if (row.locked_until && Date.parse(row.locked_until) > Date.now()) {
     res.status(423).json({ error: { code: 'ACCOUNT_LOCKED', message: `Account is temporarily locked until ${row.locked_until}.`, requestId: req.requestId } }); return;
   }
@@ -54,7 +54,7 @@ authRouter.post('/refresh', asyncHandler(async (req, res) => {
   const refresh = req.cookies?.[cookieName] as string | undefined;
   if (!refresh) { res.status(401).json({ error: { code: 'REFRESH_REQUIRED', message: 'Refresh session is missing.', requestId: req.requestId } }); return; }
   const hash = tokenHash(refresh);
-  const session = db.prepare('SELECT s.id,s.user_id,s.expires_at,u.name,u.email,u.role,u.created_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?').get(hash) as
+  const session = db.prepare('SELECT s.id,s.user_id,s.expires_at,u.name,u.email,u.role,u.created_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND u.disabled_at IS NULL').get(hash) as
     {id:string;user_id:string;expires_at:string;name:string;email:string;role:PublicUser['role'];created_at:string} | undefined;
   if (!session || Date.parse(session.expires_at) <= Date.now()) {
     db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash); res.clearCookie(cookieName, cookieOptions());

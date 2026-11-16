@@ -14,10 +14,12 @@ export function calculateDuty(destinationCountry: Destination, items: Array<{ pr
     const product = getProduct.get(item.productId) as ProductRow | undefined;
     if (!product) throw Object.assign(new Error(`Product ${item.productId} was not found.`), { status: 404, code: 'PRODUCT_NOT_FOUND' });
     const valueCents = product.price_cents * item.quantity;
-    const hsRule = db.prepare('SELECT duty_pct FROM tariff_rules WHERE country = ? AND hs_prefix <> ? AND ? LIKE hs_prefix || '%' ORDER BY LENGTH(hs_prefix) DESC LIMIT 1').get(destinationCountry, '', product.hs_code) as { duty_pct:number } | undefined;
+    const hsRule = db.prepare("SELECT duty_pct FROM tariff_rules WHERE country = ? AND hs_prefix <> ? AND ? LIKE hs_prefix || '%' ORDER BY LENGTH(hs_prefix) DESC LIMIT 1").get(destinationCountry, '', product.hs_code) as { duty_pct:number } | undefined;
     const dutyRate = hsRule?.duty_pct ?? tariff.duty_pct;
     const dutyCents = Math.floor(valueCents * dutyRate + 0.5);
-    const carrierCents = Math.floor(carrierFees[destinationCountry] * 100 * item.quantity + 0.5);
+    const carrierFeeDollars = carrierFees[destinationCountry];
+    if (carrierFeeDollars === undefined) throw Object.assign(new Error('Unsupported destination.'), { status: 422, code: 'DESTINATION_UNSUPPORTED' });
+    const carrierCents = Math.floor(carrierFeeDollars * 100 * item.quantity + 0.5);
     const vatBase = valueCents + dutyCents + (tariff.vat_includes_carrier ? carrierCents : 0);
     const vatCents = Math.floor(vatBase * tariff.vat_pct + 0.5);
     return { productId: product.id, sku: product.sku, hsCode: product.hs_code, quantity: item.quantity,

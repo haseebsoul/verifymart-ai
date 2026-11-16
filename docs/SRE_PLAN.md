@@ -2,11 +2,11 @@
 
 ## Source boundary
 
-The uploaded baseline identifies this document as an SRS **and** SRE plan and its contents list sections 12–16 for SLOs, monitoring, incident response and chaos testing. The uploaded file itself ends at section 11.6; those detailed sections were not present in the provided material. This plan preserves the explicit SRS reliability target and supplies a clearly marked implementation plan for the prototype. It must not be described as text copied from the missing source sections.
+The authoritative VerifyMart AI SRS/SRE Plan supplied for this implementation is 46 pages and contains the reliability, monitoring, incident, testing and recovery requirements used here. Section 18 supersedes any conflicting architecture in Sections 1–17; Sections 19–21 define the five-role and Atlas target. This plan is reconciled to that latest specification. It is not evidence that every operational control has already been implemented or measured.
 
 ## 1. Service boundary and critical user journeys
 
-The v1 service is one Express API process, a SQLite database, a WebSocket telemetry hub and a React/Vite static frontend. The primary critical journeys are:
+The target service is a React/Vite frontend, Express API, MongoDB Atlas persistence and authenticated WebSocket telemetry. The current repository still contains the legacy SQLite runtime; the feature branch adds Atlas infrastructure/repositories but has not yet cut all request paths over. Do not describe the app as Atlas-backed until runtime wiring, credentials and integration tests are complete. The primary critical journeys are:
 
 1. Public visitor reads catalog and verification data.
 2. Shopper receives a deterministic landed-cost quote and completes an idempotent simulated escrow checkout.
@@ -51,13 +51,14 @@ For a prototype, an operator can calculate the budget from request/error logs or
 
 ## 4. Monitoring and alert thresholds
 
-### Implemented instrumentation
+### Current instrumentation status
 
-- `X-Request-Id` is emitted for every API response and included in the common error envelope.
-- Express request logging uses structured JSON logging.
-- `/api/health` reports process liveness and `/api/ready` checks SQLite readiness.
-- The WebSocket simulator emits a `TELEMETRY_TICK` every two seconds and the operations UI reports connection state.
-- The database uses SQLite WAL mode, foreign-key enforcement and a five-second busy timeout.
+- `X-Request-Id` is emitted for API responses and included in the common error envelope.
+- Structured request logging is being moved to redacted Pino JSON logging; Authorization headers, cookies, passwords and refresh-token fields must never appear.
+- The existing `/api/ready` still checks SQLite. After Atlas cutover it must ping the configured Atlas database and fail closed when the Atlas connection is unavailable.
+- The WebSocket simulator emits a `TELEMETRY_TICK` every two seconds. It is simulated telemetry, not live attack detection.
+- The legacy database currently uses SQLite WAL mode. Atlas cutover requires BSON Date timestamps, integer-cent BSON Long/Decimal128 money, a transaction-capable deployment, required indexes and separate least-privilege audit credentials.
+- The branch has not yet completed Prometheus `/metrics/prom` export or the full Atlas readiness/monitoring integration.
 
 ### Recommended alert rules (implementation-defined)
 
@@ -139,11 +140,13 @@ All fault-injection experiments must run in isolated test/staging data, never ag
 
 ## 8. Backup, recovery and deployment
 
-- Persist `/app/data` (or configured `DATABASE_PATH`) on a durable volume.
-- Use SQLite's online backup API or a consistent filesystem snapshot; copying only the main database file while WAL writes are active is not a safe backup procedure.
-- Keep encrypted off-host backups and periodically test restores.
-- Container health checks should use `/api/ready`; reverse proxy must support HTTP and WebSocket upgrade paths.
-- CI gates strict TypeScript, production build, unit tests and palette linting.
+- The target store is MongoDB Atlas with separate `verifymart_dev`, `verifymart_staging`, and `verifymart_prod` databases/environments.
+- The target recovery objectives are RPO 1 hour and RTO 30 minutes. They are requirements, not demonstrated guarantees on the current M0 development cluster.
+- Production must use an Atlas tier and backup policy supporting the required backup/PITR posture. An M0 development cluster is not evidence of production backup capability.
+- Restore tests must verify all eleven required collections, indexes, unique keys, integer-cent money, UTC BSON Dates, non-negative stock and order/audit history.
+- The SQLite migration source remains preserved read-only until staging migration, count reconciliation and end-to-end acceptance pass.
+- Container health checks use `/api/ready`; after cutover it must check Atlas readiness. The reverse proxy must support HTTP and WebSocket upgrade paths.
+- CI gates strict TypeScript, production build, unit/API/browser/accessibility/security tests and palette linting.
 - Production startup does not run demo seeding. Demo credentials must never be enabled in production.
 
 ## 9. SRE acceptance checklist

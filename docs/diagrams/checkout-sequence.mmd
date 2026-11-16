@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    actor Shopper
+    participant UI as React Checkout
+    participant API as Express API
+    participant Auth as Auth/RBAC
+    participant Atlas as MongoDB Atlas
+    participant Products as products
+    participant Orders as orders
+
+    Shopper->>UI: Confirm checkout
+    UI->>API: POST /api/orders/checkout + Idempotency-Key
+    API->>Auth: Authenticate shopper and load current role
+    Auth->>Atlas: Read users by token subject
+    Atlas-->>Auth: Current shopper principal
+    Auth-->>API: Authorized principal
+    API->>API: Validate Zod body; aggregate duplicate product IDs
+    API->>API: Recompute landed-cost quote server-side
+    API->>Orders: Find existing order by unique idempotencyKey
+    alt Matching prior request
+        Orders-->>API: Original order
+        API-->>UI: 200 original order (no stock update)
+    else New request
+        API->>Atlas: Start multi-document transaction
+        loop Each distinct product
+            API->>Products: Read product and ensure stock >= requested quantity
+            Products-->>API: Current product/price/stock
+            API->>Products: Conditional stock decrement
+            Products-->>API: Updated stock count
+        end
+        API->>Orders: Insert order with items/quote/escrow state held
+        Orders-->>API: Insert acknowledged
+        API->>Atlas: Commit transaction
+        Atlas-->>API: Commit acknowledged
+        API-->>UI: 201 created order; simulated escrow held
+    end
+    alt Insufficient stock or any write fails
+        API->>Atlas: Abort transaction
+        Atlas-->>API: Rollback stock changes and order insert
+        API-->>UI: 409 STOCK_INSUFFICIENT / transaction error
+    end

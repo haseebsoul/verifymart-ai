@@ -4,18 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/server-atlas.ts",
+    "dev:atlas": "tsx watch src/server-atlas.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
-    "seed": "tsx src/seed.ts",
+    "start": "node dist/server-atlas.js",
+    "start:atlas": "node dist/server-atlas.js",
+    "seed": "tsx src/seed-atlas.ts",
+    "seed:atlas": "tsx src/seed-atlas.ts",
+    "migrate:atlas": "tsx src/migrations/sqlite-to-atlas.ts",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint src test"
+    "lint": "eslint src test",
+    "dev:sqlite": "tsx watch src/server.ts",
+    "start:sqlite": "node dist/server.js",
+    "seed:sqlite": "tsx src/seed.ts"
   },
   "dependencies": {
     "@verifymart/shared": "1.0.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -23,12 +29,13 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.9.0",
     "pino": "^9.6.0",
-    "pino-http": "^10.4.0",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.12",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",
@@ -42,5 +49,8 @@
     "typescript": "^5.7.3",
     "vitest": "^2.1.8",
     "@vitest/coverage-v8": "^2.1.8"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.8.1"
   }
 }

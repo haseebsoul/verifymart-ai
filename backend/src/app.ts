@@ -4,8 +4,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
-import pinoHttp from 'pino-http';
-import { randomUUID } from 'node:crypto';
+import pino from 'pino';
 import { authRouter } from './routes-auth.js';
 import { catalogRouter } from './routes-catalog.js';
 import { commerceRouter } from './routes-commerce.js';
@@ -23,7 +22,24 @@ app.use(cors({ origin: (origin, callback) => {
 app.use(express.json({ limit:'1mb' }));
 app.use(cookieParser());
 app.use('/api', requestContext);
-app.use(pinoHttp({ genReqId: req => req.requestId ?? req.headers['x-request-id']?.toString() ?? `req_${randomUUID().slice(0,12)}` }));
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  redact: { paths: ['req.headers.authorization', 'req.headers.cookie', 'password', 'passwordHash', 'token', 'refreshToken'], censor: '[REDACTED]' }
+});
+app.use((req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    logger.info({
+      requestId: req.requestId,
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs
+    }, 'HTTP request');
+  });
+  next();
+});
 
 const publicLimiter = rateLimit({ windowMs:60_000, limit:120, standardHeaders:'draft-7', legacyHeaders:false,
   handler: (_req,res) => res.status(429).json({error:{code:'RATE_LIMITED',message:'Too many requests. Please retry shortly.',requestId:res.getHeader('X-Request-Id') ?? 'unknown'}}) });

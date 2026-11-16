@@ -1,0 +1,474 @@
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { Router, type Response } from 'express';
+import type { Collection } from 'mongodb';
+import rateLimit from 'express-rate-limit';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { MongoServerError, type UpdateFilter } from 'mongodb';
+import { z } from 'zod';
+import { getAtlasDb } from './infrastructure/atlas.js';
+import { authenticateAtlas } from './middleware/atlas-auth.js';
+import { asyncHandler } from './middleware/http.js';
+import type { MerchantDocument, Role, UserDocument } from './repositories/contracts.js';
+import { MongoUserRepository } from './repositories/users.js';
+import { appendAuditEvent } from './repositories/audit.js';
+import { buildRefreshRotationPipeline } from './services/refresh-rotation.js';
+
+export const atlasAuthRouter = Router();
+
+atlasAuthRouter.get('/auth/mode', (_req, res) => {
+  const demoMode = process.env.NODE_ENV === 'development' && process.env.ENABLE_DEMO_AUTH === 'true' && Boolean(process.env.DEMO_PASSWORD);
+  res.json({ demoMode });
+});
+const cookieName = 'verifymart_refresh';
+const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+
+const stakeholderRoles = ['shopper', 'merchant', 'inventory_manager', 'operator', 'admin'] as const;
+const roleLabels: Record<Role, string> = {
+  shopper: 'Shopper / Buyer',
+  merchant: 'Merchant / Supplier',
+  inventory_manager: 'Inventory Manager',
+  operator: 'Operations Auditor',
+  admin: 'System Administrator'
+};
+
+const registerSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(10).max(128),
+  role: z.enum(stakeholderRoles).default('shopper'),
+  businessName: z.string().trim().min(2).max(120).optional(),
+  country: z.enum(['US', 'UK', 'EU', 'AE', 'PK', 'SG', 'CN', 'TR']).optional(),
+  inviteKey: z.string().max(256).optional()
+}).strict().superRefine((value, context) => {
+  if (value.role === 'merchant' && (!value.businessName || !value.country)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Business name and country are required for merchant registration.',
+      path: ['businessName']
+    });
+  }
+});
+
+const loginSchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(1).max(128),
+  selectedRole: z.enum(stakeholderRoles).optional()
+}).strict();
+
+const demoLoginSchema = z.object({ role: z.enum(stakeholderRoles) }).strict();
+
+function configuredRoleInviteKey(role: Role): string | undefined {
+  if (role === 'admin') return process.env.ADMIN_INVITE_KEY?.trim() || undefined;
+  const configured = process.env.ROLE_INVITE_KEYS?.trim();
+  if (!configured) return undefined;
+  try {
+    const values = JSON.parse(configured) as Record<string, unknown>;
+    const value = values[role];
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function inviteKeyMatches(supplied: string | undefined, expected: string | undefined): boolean {
+  if (!supplied || !expected) return false;
+  const left = Buffer.from(supplied);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
+const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false });
+
+function jwtSecret(): string {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (!secret) throw new Error('JWT_ACCESS_SECRET is required for Atlas authentication.');
+  return secret;
+}
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function safeUser(user: UserDocument) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    createdAt: user.createdAt
+  };
+}
+
+function issueAccessToken(user: UserDocument): string {
+  return jwt.sign({ name: user.name, email: user.email }, jwtSecret(), {
+    subject: user._id,
+    expiresIn: '15m'
+  });
+}
+
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict' as const,
+    path: '/api/auth',
+    maxAge: sevenDaysMs
+  };
+}
+
+function invalidCredentials(res: Response, requestId?: string) {
+  res.status(401).json({
+    error: {
+      code: 'INVALID_CREDENTIALS',
+      message: 'Email or password is incorrect.',
+      requestId: requestId ?? 'unknown'
+    }
+  });
+}
+
+async function newRefreshSession(userId: string, res: Response, userCollection: Collection<UserDocument>) {
+  const token = randomBytes(48).toString('base64url');
+  const now = new Date();
+  await userCollection.updateOne(
+    { _id: userId },
+    ({
+      $push: {
+        refreshSessions: {
+          $each: [{
+            tokenHash: hashToken(token),
+            createdAt: now,
+            expiresAt: new Date(now.getTime() + sevenDaysMs)
+          }],
+          $slice: -20
+        }
+      }
+    } as unknown as UpdateFilter<UserDocument>));
+  res.cookie(cookieName, token, cookieOptions());
+}
+
+atlasAuthRouter.post('/auth/register', registerLimiter, asyncHandler(async (req, res) => {
+  const input = registerSchema.parse(req.body);
+  const role = input.role as Role;
+
+  if (['inventory_manager', 'operator', 'admin'].includes(role)) {
+    const expected = configuredRoleInviteKey(role);
+    if (!expected) {
+      res.status(503).json({
+        error: {
+          code: 'ROLE_INVITE_NOT_CONFIGURED',
+          message: role === 'admin'
+            ? 'Administrator self-registration is disabled until ADMIN_INVITE_KEY is configured on the backend.'
+            : 'This stakeholder role requires its matching key in ROLE_INVITE_KEYS on the backend.',
+          requestId: req.requestId
+        }
+      });
+      return;
+    }
+    if (!inviteKeyMatches(input.inviteKey, expected)) {
+      res.status(403).json({
+        error: {
+          code: 'ROLE_INVITE_REQUIRED',
+          message: 'A valid invitation key is required for ' + roleLabels[role] + ' registration.',
+          requestId: req.requestId
+        }
+      });
+      return;
+    }
+  }
+
+  const database = getAtlasDb();
+  const users = database.collection<UserDocument>('users');
+  const user: UserDocument = {
+    _id: 'usr_' + randomUUID().replaceAll('-', '').slice(0, 18),
+    name: input.name,
+    email: input.email.toLowerCase(),
+    passwordHash: await bcrypt.hash(input.password, 12),
+    role,
+    failedLogins: 0,
+    lockedUntil: null,
+    lastLogin: null,
+    disabledAt: null,
+    createdAt: new Date(),
+    refreshSessions: []
+  };
+
+  const merchant: MerchantDocument | undefined = role === 'merchant'
+    ? {
+        _id: 'mrc_' + randomUUID().replaceAll('-', '').slice(0, 18),
+        userId: user._id,
+        businessName: input.businessName!,
+        country: input.country!,
+        status: 'pending',
+        trustScore: 0,
+        createdAt: user.createdAt,
+        updatedAt: user.createdAt
+      }
+    : undefined;
+
+  const session = database.client.startSession();
+  try {
+    await session.withTransaction(async () => {
+      await users.insertOne(user, { session });
+      if (merchant) await database.collection<MerchantDocument>('merchants').insertOne(merchant, { session });
+    });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ error: { code: 'EMAIL_IN_USE', message: 'An account with this email already exists.', requestId: req.requestId } });
+      return;
+    }
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+
+  await appendAuditEvent({
+    actorId: user._id,
+    action: 'ACCOUNT_REGISTERED',
+    targetType: 'user',
+    targetId: user._id,
+    details: { role, merchantApplicationCreated: Boolean(merchant) }
+  });
+  await newRefreshSession(user._id, res, users);
+  res.status(201).json({
+    user: safeUser(user),
+    accessToken: issueAccessToken(user),
+    ...(merchant ? { merchant: { id: merchant._id, status: merchant.status } } : {})
+  });
+}));
+
+atlasAuthRouter.post('/auth/login', loginLimiter, asyncHandler(async (req, res) => {
+  const input = loginSchema.parse(req.body);
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const user = await users.findOne({ email: input.email.toLowerCase() });
+
+  // Keep the same response for unknown, disabled and incorrect-password accounts.
+  if (!user || user.disabledAt) {
+    invalidCredentials(res, req.requestId);
+    return;
+  }
+  if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+    res.status(423).json({ error: { code: 'ACCOUNT_LOCKED', message: 'Account is temporarily locked after repeated failed attempts.', requestId: req.requestId } });
+    return;
+  }
+
+  const valid = await bcrypt.compare(input.password, user.passwordHash);
+  if (!valid) {
+    await new MongoUserRepository().incrementFailedLogin(user._id);
+    invalidCredentials(res, req.requestId);
+    return;
+  }
+
+  if (input.selectedRole && input.selectedRole !== user.role) {
+    res.status(403).json({
+      error: {
+        code: 'ROLE_MISMATCH',
+        message: 'This account is registered as ' + roleLabels[user.role] + '. Please select ' + roleLabels[user.role] + ' above to sign in.',
+        actualRole: user.role,
+        requestId: req.requestId
+      }
+    });
+    return;
+  }
+
+  await new MongoUserRepository().clearFailedLogins(user._id);
+  await newRefreshSession(user._id, res, users);
+  res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
+}));
+
+const demoAccounts: Record<Role, string> = {
+  shopper: 'shopper@verifymart.ai',
+  merchant: 'merchant@verifymart.ai',
+  inventory_manager: 'inventory@verifymart.ai',
+  operator: 'auditor@verifymart.ai',
+  admin: 'admin@verifymart.ai'
+};
+
+/**
+ * The browser never receives DEMO_PASSWORD. This shortcut is only enabled
+ * when the server has an explicit demo password and is not running in production.
+ */
+atlasAuthRouter.post('/auth/demo-login', loginLimiter, asyncHandler(async (req, res) => {
+  if (process.env.NODE_ENV !== 'development' || process.env.ENABLE_DEMO_AUTH !== 'true' || !process.env.DEMO_PASSWORD) {
+    res.status(404).json({ error: { code: 'DEMO_ACCESS_DISABLED', message: 'Quick demo access is disabled.', requestId: req.requestId } });
+    return;
+  }
+
+  const input = demoLoginSchema.parse(req.body);
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const user = await users.findOne({
+    email: demoAccounts[input.role],
+    role: input.role,
+    $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+  });
+  if (!user || !(await bcrypt.compare(process.env.DEMO_PASSWORD, user.passwordHash))) {
+    res.status(503).json({
+      error: {
+        code: 'DEMO_ACCOUNT_UNAVAILABLE',
+        message: 'The seeded ' + roleLabels[input.role] + ' account is unavailable. Confirm the development seed and DEMO_PASSWORD configuration.',
+        requestId: req.requestId
+      }
+    });
+    return;
+  }
+
+  await new MongoUserRepository().clearFailedLogins(user._id);
+  await newRefreshSession(user._id, res, users);
+  res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
+}));
+
+atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
+  const refresh = req.cookies?.[cookieName] as string | undefined;
+  if (!refresh) {
+    res.status(401).json({ error: { code: 'REFRESH_REQUIRED', message: 'Refresh session is missing.', requestId: req.requestId } });
+    return;
+  }
+
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const tokenHash = hashToken(refresh);
+  const user = await users.findOne({
+    'refreshSessions.tokenHash': tokenHash,
+    $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+  });
+
+  if (!user) {
+    res.clearCookie(cookieName, cookieOptions());
+    res.status(401).json({ error: { code: 'REFRESH_EXPIRED', message: 'Refresh session has expired. Sign in again.', requestId: req.requestId } });
+    return;
+  }
+
+  const existing = user.refreshSessions.find(session => session.tokenHash === tokenHash);
+  if (!existing || existing.expiresAt.getTime() <= Date.now()) {
+    await users.updateOne({ _id: user._id }, { $pull: { refreshSessions: { tokenHash } } } as unknown as UpdateFilter<UserDocument>);
+    res.clearCookie(cookieName, cookieOptions());
+    res.status(401).json({ error: { code: 'REFRESH_EXPIRED', message: 'Refresh session has expired. Sign in again.', requestId: req.requestId } });
+    return;
+  }
+
+  const now = new Date();
+  const replacementToken = randomBytes(48).toString('base64url');
+  const replacement = {
+    tokenHash: hashToken(replacementToken),
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + sevenDaysMs)
+  };
+  // One conditional pipeline update consumes the old token and appends its
+  // replacement atomically. Concurrent refresh requests cannot both succeed.
+  const rotated = await users.updateOne(
+    {
+      _id: user._id,
+      refreshSessions: { $elemMatch: { tokenHash, expiresAt: { $gt: now } } },
+      $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+    },
+    buildRefreshRotationPipeline(tokenHash, replacement)
+  );
+  if (rotated.modifiedCount !== 1) {
+    res.clearCookie(cookieName, cookieOptions());
+    res.status(401).json({ error: { code: 'REFRESH_REPLAYED', message: 'Refresh token was already rotated. Sign in again.', requestId: req.requestId } });
+    return;
+  }
+
+  res.cookie(cookieName, replacementToken, cookieOptions());
+  res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
+}));
+
+atlasAuthRouter.post('/auth/logout', asyncHandler(async (req, res) => {
+  const refresh = req.cookies?.[cookieName] as string | undefined;
+  if (refresh) {
+    await getAtlasDb().collection<UserDocument>('users').updateMany(
+      { 'refreshSessions.tokenHash': hashToken(refresh) },
+      { $pull: { refreshSessions: { tokenHash: hashToken(refresh) } } } as unknown as UpdateFilter<UserDocument>
+    );
+  }
+  res.clearCookie(cookieName, cookieOptions());
+  res.status(204).end();
+}));
+
+atlasAuthRouter.get('/auth/me', authenticateAtlas, asyncHandler(async (req, res) => {
+  const user = await getAtlasDb().collection<UserDocument>('users').findOne({ _id: req.atlasPrincipal!.id });
+  if (!user) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'The account is no longer available.', requestId: req.requestId } });
+    return;
+  }
+  res.json({ user: safeUser(user) });
+}));
+
+const updateProfileSchema = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  email: z.string().trim().email().max(254).optional()
+}).strict().refine(value => Object.keys(value).length > 0, 'Provide a name or email update.');
+
+atlasAuthRouter.patch('/auth/me', authenticateAtlas, asyncHandler(async (req, res) => {
+  const input = updateProfileSchema.parse(req.body);
+  const userId = req.atlasPrincipal!.id;
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const changes: Record<string, unknown> = {};
+  if (input.name !== undefined) changes.name = input.name;
+  if (input.email !== undefined) changes.email = input.email.toLowerCase();
+
+  try {
+    await users.updateOne({ _id: userId }, { $set: changes });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      res.status(409).json({ error: { code: 'EMAIL_IN_USE', message: 'An account with this email already exists.', requestId: req.requestId } });
+      return;
+    }
+    throw error;
+  }
+
+  const updated = await users.findOne({ _id: userId });
+  if (!updated || updated.disabledAt) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'The account is no longer available.', requestId: req.requestId } });
+    return;
+  }
+  await appendAuditEvent({
+    actorId: userId,
+    action: 'ACCOUNT_PROFILE_UPDATED',
+    targetType: 'user',
+    targetId: userId,
+    details: { changedFields: Object.keys(changes) }
+  });
+  res.json({ user: safeUser(updated) });
+}));
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(10).max(128)
+}).strict();
+
+atlasAuthRouter.post('/auth/password', authenticateAtlas, asyncHandler(async (req, res) => {
+  const input = passwordChangeSchema.parse(req.body);
+  const userId = req.atlasPrincipal!.id;
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const user = await users.findOne({ _id: userId });
+  if (!user || user.disabledAt) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'The account is no longer available.', requestId: req.requestId } });
+    return;
+  }
+  if (!(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+    res.status(400).json({ error: { code: 'CURRENT_PASSWORD_INVALID', message: 'The current password is incorrect.', requestId: req.requestId } });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(input.newPassword, 12);
+  const changed = await users.updateOne(
+    { _id: userId, passwordHash: user.passwordHash, $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }] },
+    { $set: { passwordHash, refreshSessions: [] } }
+  );
+  // Hashes are deliberately not included in any audit or response payload.
+  if (changed.modifiedCount !== 1) {
+    res.status(409).json({ error: { code: 'PASSWORD_CHANGE_CONFLICT', message: 'The account changed during this request. Retry after signing in again.', requestId: req.requestId } });
+    return;
+  }
+
+  await newRefreshSession(userId, res, users);
+  await appendAuditEvent({
+    actorId: userId,
+    action: 'ACCOUNT_PASSWORD_CHANGED',
+    targetType: 'user',
+    targetId: userId,
+    details: { otherSessionsRevoked: true }
+  });
+  res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
+}));

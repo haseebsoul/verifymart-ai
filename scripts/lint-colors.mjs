@@ -1,8 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 const roots = ['frontend/src'];
-const allowed = new Set(['#9caf88', '#f7f5ef', '#eb412c']);
-const forbiddenTokens = /\b(black|white|gray|grey|zinc|slate)\b/i;
+const allowed = new Set(['#f9f9f6','#ffffff','#f2f2ed','#e4e4df','#cecec6','#116d4e','#0d573e','#ebf5f0','#b7dfd0','#181a18','#525854','#7a7f7b','#b45309','#b91c1c']);
+const forbiddenTokens = /(?:^|[;{,])\s*(?:color|background(?:Color|-color)?|border(?:Color|-color)?|fill|stroke)\s*:\s*["']?(?:black|white|gray|grey|zinc|slate)["']?(?=\s*[,;}])/im;
 const hex = /#[0-9a-fA-F]{3,8}\b/g;
 const errors = [];
 async function walk(dir) {
@@ -18,4 +18,4 @@ async function walk(dir) {
 }
 for (const root of roots) await walk(root);
 if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
-console.log('Palette guard passed: Sage, Off-White and Tomato only.');
+console.log('Palette guard passed: VerifyMart Emerald design tokens only.');

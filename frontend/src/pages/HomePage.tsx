@@ -1,44 +1,416 @@
-import { useEffect,useMemo,useState } from 'react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownRight,ArrowRight,ArrowUpRight,BadgeCheck,Check,Globe2,LockKeyhole,PackageCheck,ShieldCheck,Truck,WalletCards } from 'lucide-react';
+import {
+  ArrowRight, BadgeCheck, Boxes, CheckCircle2, ClipboardCheck, Clock3,
+  ShieldCheck, ShoppingBag, Store, Truck
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { DESTINATIONS,DESTINATION_NAMES,type Product,type VerifyResult,type DutyQuote } from '@verifymart/shared';
+import { CATEGORIES, type Destination, type DutyQuote, type Product } from '@verifymart/shared';
 import { api } from '../lib/api';
-import { money } from '../lib/format';
-import { ProductGrid } from '../components/ProductCard';
+import { useCart } from '../context/cart';
 
-function QuickVerify(){
-  const [query,setQuery]=useState('');const [result,setResult]=useState<VerifyResult|null>(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);
-  const submit=async(value=query)=>{if(!value.trim())return;setBusy(true);setError('');setResult(null);try{setResult(await api<VerifyResult>(`/verify/${encodeURIComponent(value.trim())}`));}catch(e){setError(e instanceof Error?e.message:'No matching record.');}finally{setBusy(false);}};
-  return <div className="quick-verify-card"><div className="quick-card-top"><span className="eyebrow">Trust, in one lookup</span><span className="live-pill"><i/> Public portal</span></div><h2>Check the proof<br/><em>before the purchase.</em></h2><p>Enter a SKU, batch hash or order ID to inspect its custody trail.</p><form onSubmit={e=>{e.preventDefault();void submit();}} className="quick-search"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="e.g. AUD-001" aria-label="SKU, batch hash or order ID"/><button className="button button-primary" disabled={busy}>{busy?'Checking…':'Verify'} <ArrowRight size={16}/></button></form>
-    {error&&<p role="alert" className="quick-error">{error}</p>}
-    {result&&<div className="quick-result"><div><BadgeCheck size={18}/><b>{result.product.name}</b><span>{result.authenticityScore}/100 authenticity</span></div><small>{result.timeline.length} custody events · simulated ledger</small><Link to={`/verify?query=${encodeURIComponent(result.query)}`}>View certificate <ArrowUpRight size={14}/></Link></div>}
-    <div className="quick-samples"><span>Try a sample</span>{['AUD-001','HOR-004','EDG-009'].map(code=><button key={code} onClick={()=>{setQuery(code);void submit(code);}}>{code}</button>)}</div>
-  </div>;
+type PublicMetrics = {
+  api: { status: string; p95LatencyMs: number; requests: number; errors: number };
+  database: { products: number; batchProvenanceRecords: number; registeredSuppliers: number; orderRecords: number };
+};
+type Health = { status: string; database: string; persistence: string; p95LatencyMs: number };
+type AtlasVerificationResult = {
+  query: string; found: boolean; simulated: true; recordType: 'product' | 'order' | 'not_found';
+  authenticityNote: string; authenticityScore?: number;
+  product?: { id: string; sku: string; name: string; brand: string; category: string; priceUsd: number; status: string; authenticityScore: number; batchHash: string; hsCode: string; originHubId: string };
+  timeline?: Array<{ id: string; stage: string; hubId: string; occurredAt: string; hash: string }>;
+};
+
+const destinations = [
+  'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi',
+  'Faisalabad', 'Multan', 'Peshawar', 'Quetta'
+];
+const origins = ['China', 'UAE', 'UK', 'USA', 'Turkey', 'Singapore', 'Switzerland'];
+const roleSteps = [
+  { number: '01', title: 'Supplier registration', text: 'The supplier business profile is stored in Atlas and begins in pending review before published listings are enabled.', icon: Store },
+  { number: '02', title: 'Hash-anchored batch record', text: 'A SHA-256 digest identifies the submitted product batch and links its recorded custody events.', icon: ShieldCheck },
+  { number: '03', title: 'Customs estimate', text: 'A versioned PCT / HS tariff record powers the published landed-cost estimate.', icon: ClipboardCheck },
+  { number: '04', title: 'Delivery evidence', text: 'Order and escrow states make each checkout handoff visible to the permitted workspaces.', icon: Truck }
+];
+
+function usd(value: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
 }
-function TelemetryPreview(){
-  const [lines,setLines]=useState<Array<{type:string;message:string;time:string}>>([]);const [connected,setConnected]=useState(false);
-  useEffect(()=>{const protocol=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(`${protocol}//${location.host}/ws/telemetry?public=1`);ws.onopen=()=>setConnected(true);ws.onclose=()=>setConnected(false);ws.onerror=()=>setConnected(false);ws.onmessage=event=>{try{const frame=JSON.parse(event.data) as {type:string;payload:Record<string,unknown>;at:string};const message=frame.type==='CONNECTED'?'Sanitized public channel connected':frame.type==='BATCH_VERIFIED'?`BATCH VERIFIED  ${String(frame.payload.sku??'SKU')} @ ${String(frame.payload.hubId??'HUB')}`:frame.type==='CUSTOMS_CLEARED'?`CUSTOMS CLEARED  ${String(frame.payload.hubId??'HUB')}`:'Verification network heartbeat';setLines(old=>[...old,{type:frame.type,message,time:new Date(frame.at).toLocaleTimeString()}].slice(-6));}catch{/* Ignore malformed telemetry frames. */}};return()=>ws.close();},[]);
-  const fallback=[{type:'BATCH_VERIFIED',message:'BATCH VERIFIED  AUD-001 @ HUB-ZRH',time:'09:41:08'},{type:'CUSTOMS_CLEARED',message:'CUSTOMS CLEARED  HUB-DXB',time:'09:41:06'},{type:'CONNECTED',message:'PUBLIC CHANNEL READY',time:'09:41:04'}];
-  return <div className="terminal-card"><div className="terminal-head"><div><span className="terminal-icon">⌘</span><strong>Verification stream</strong></div><span className="live-pill"><i className={connected?'':'pulse-off'}/>{connected?'Live connection':'Reconnecting'}</span></div><div className="terminal-sub">PUBLIC SIMULATED FEED <span>· WEBSOCKET /WS/TELEMETRY</span></div><div className="terminal-lines">{(lines.length?lines:fallback).map((line,i)=><div key={`${line.time}-${i}`}><time>{line.time}</time><span className={line.type==='CUSTOMS_CLEARED'?'terminal-good':line.type==='CONNECTED'?'terminal-muted':'terminal-main'}>{line.message}</span></div>)}</div><div className="terminal-foot"><span>Only sanitized demo events are shown on this channel.</span><span><i/> ENCRYPTED TRANSPORT</span></div></div>;
+
+function SectionEyebrow({ children }: { children: ReactNode }) {
+  return <span className="eyebrow section-eyebrow">{children}</span>;
 }
-function SavingsCalculator({products}:{products:Product[]}){
-  const sample=products.find(p=>p.sku==='AUD-001')??products[0];const [destination,setDestination]=useState<(typeof DESTINATIONS)[number]>('PK');const [quantity,setQuantity]=useState(2);const [quote,setQuote]=useState<DutyQuote|null>(null);const [loading,setLoading]=useState(false);
-  useEffect(()=>{if(!sample)return;let alive=true;setLoading(true);const timer=window.setTimeout(()=>{void api<DutyQuote>('/duty/calculate',{method:'POST',body:JSON.stringify({destinationCountry:destination,items:[{productId:sample.id,quantity}]})}).then(q=>{if(alive)setQuote(q);}).catch(()=>setQuote(null)).finally(()=>{if(alive)setLoading(false);});},150);return()=>{alive=false;window.clearTimeout(timer);};},[sample,destination,quantity]);
-  const legacy=quote?quote.total+quote.subtotal*.08:0;return <div className="calculator-card" id="calculator"><div className="calculator-head"><span className="eyebrow">A better kind of checkout</span><span className="estimate-chip">Estimate · USD</span></div><h3>Know the number<br/><em>before it ships.</em></h3><p>Test a sample basket and see each part of the landed cost.</p><div className="calc-controls"><label htmlFor="basket-range">Sample basket value <b>{money((sample?.priceUsd??349)*quantity)}</b></label><input id="basket-range" type="range" min="1" max="6" value={quantity} onChange={e=>setQuantity(Number(e.target.value))}/><div className="range-labels"><span>1 item</span><span>6 items</span></div><label htmlFor="calc-destination">Ship to</label><select id="calc-destination" value={destination} onChange={e=>setDestination(e.target.value as typeof destination)}>{DESTINATIONS.map(code=><option value={code} key={code}>{DESTINATION_NAMES[code]}</option>)}</select></div>
-    <div className="calc-breakdown">{[['Product value',quote?.subtotal],['Import duty',quote?.duty],['VAT / tax',quote?.vat],['Carrier fee',quote?.carrierFee]].map(([label,value])=><div key={String(label)}><span>{label}</span><b>{typeof value==='number'?money(value):'—'}</b></div>)}<div className="calc-total"><span>Estimated total</span><b>{loading?'Calculating…':quote?money(quote.total):'—'}</b></div></div><div className="calc-saving"><span>Illustrative saving vs. +8% surprise-fee assumption</span><strong>{quote?money(Math.max(0,legacy-quote.total)):'—'}</strong></div><small>Seed tariff only. Rates are illustrative and not customs advice.</small>
-  </div>;
+
+function VerificationCard() {
+  const [query, setQuery] = useState('');
+  const [result, setResult] = useState<AtlasVerificationResult | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const verify = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = query.trim();
+    if (!value) return;
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      setResult(await api<AtlasVerificationResult>(`/verify/${encodeURIComponent(value)}`));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No matching batch record was found.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="certificate-shell">
+      <div className="certificate-status">
+        <span><i /> Supplier batch record</span>
+        <b>VM / PK</b>
+      </div>
+      <div className="certificate-card">
+        <div className="certificate-card-top">
+          <span className="certificate-mark"><ShieldCheck size={22} /></span>
+          <span className="certificate-label">BATCH PROVENANCE RECORD</span>
+        </div>
+        <h2>Check a supplier record</h2>
+        <p>Inspect the batch digest and its recorded custody trail. Application records are not manufacturer-signed proof.</p>
+        <form onSubmit={verify} className="certificate-form">
+          <label htmlFor="batch-hash">SHA-256 batch hash</label>
+          <input
+            id="batch-hash"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            maxLength={128}
+            placeholder="64 hexadecimal characters"
+            autoComplete="off"
+          />
+          <button className="button button-primary" disabled={busy || !query.trim()}>
+            {busy ? 'Verifying…' : 'Verify record'} <ArrowRight size={16} />
+          </button>
+        </form>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        {result && (
+          <div className="verification-result" role="status">
+            <div><BadgeCheck size={18} /><strong>{result.product?.name ?? 'Verification record'}</strong></div>
+            <span>{result.authenticityScore ?? result.product?.authenticityScore ?? '—'}/100 · {result.timeline?.length ?? 0} recorded checkpoints</span>
+            <small>{result.authenticityNote}</small>
+            <Link to={`/verify?query=${encodeURIComponent(result.query)}`}>Open full verification record</Link>
+          </div>
+        )}
+      </div>
+      <div className="certificate-caption"><span>RECORD / 01</span><span>PUBLIC VERIFICATION</span></div>
+    </div>
+  );
 }
-export function HomePage(){
-  const {data}=useQuery({queryKey:['featured'],queryFn:()=>api<{products:Product[]}>('/products?verifiedOnly=true&sort=authenticity')});const products=data?.products??[];const featured=useMemo(()=>products.slice(0,6),[products]);const [comparison,setComparison]=useState<'traditional'|'verify'>('verify');
-  return <main className="home-page">
-    <section className="hero-section section-shell"><div className="hero-copy"><span className="eyebrow"><span className="eyebrow-line"/> TRUST IS A PRODUCT FEATURE</span><h1>Shop globally.<br/><em>Zero customs shock.</em><br/>Verified provenance.</h1><p>Every handoff has a history. Every checkout has a number. High-value goods, with the proof and landed-cost clarity built in.</p><div className="hero-actions"><Link className="button button-primary" to="/store">Explore verified catalog <ArrowRight size={17}/></Link><Link className="button button-outline" to="/verify">Verify a batch hash <ShieldCheck size={17}/></Link></div><div className="hero-metrics"><div><b>24</b><span>curated listings</span></div><div><b>6</b><span>destinations</span></div><div><b>4+</b><span>custody checkpoints</span></div></div></div><div className="hero-visual"><div className="hero-orbit orbit-one"/><div className="hero-orbit orbit-two"/><div className="hero-stamp"><ShieldCheck size={36}/><span>VERIFIED<br/>BY DESIGN</span></div><QuickVerify/><span className="hero-caption">01 / AUTHENTICITY, MADE VISIBLE</span></div></section>
-    <section className="marquee-section" aria-label="Trade network integrations"><div className="marquee-label">DESIGNED FOR GLOBAL TRADE LANES</div><div className="marquee-track"><span>DHL EXPRESS</span><i>✳</i><span>SWISS SGS</span><i>✳</i><span>MAERSK TRADE</span><i>✳</i><span>FEDEX PRIORITY</span><i>✳</i><span>WISE FX</span><i>✳</i><span>STRIPE ESCROW</span><i>✳</i></div><small>Illustrative integration targets · no live partner integrations in this prototype</small></section>
-    <section className="section-shell problem-section"><div className="section-heading"><span className="eyebrow">THE REASON WE EXIST</span><h2>Buying across borders<br/><em>should feel certain.</em></h2><p>Three frictions make a good purchase feel like a gamble. We designed around each one.</p></div><div className="comparison-toggle" role="group" aria-label="Compare marketplace experience"><button onClick={()=>setComparison('traditional')} className={comparison==='traditional'?'active':''}>Traditional checkout</button><button onClick={()=>setComparison('verify')} className={comparison==='verify'?'active':''}>VerifyMart approach</button></div><div className="comparison-grid">{(comparison==='traditional'?[['01','Unknown origin','A product page rarely reveals the journey behind the item.'],['02','Cost arrives late','Import charges can appear when the courier reaches your door.'],['03','Seller stays opaque','Stock and delivery performance are difficult to compare.']]:[['01','Traceable provenance','A batch hash opens a custody timeline with factory and hub events.'],['02','Landed price upfront','Duty, tax and carrier fees are estimated before the order is placed.'],['03','Visible operations','Inventory, SLA signals and escrow states are measurable.']]).map(([n,title,body])=><article className="comparison-card" key={n}><span>{n}</span><div><h3>{title}</h3><p>{body}</p></div><ArrowUpRight size={18}/></article>)}</div><small className="illustrative-note">Illustrative product targets · simulated records and estimate rules</small></section>
-    <section className="featured-section"><div className="section-shell"><div className="section-heading row-heading"><div><span className="eyebrow">THE VERIFIED EDIT</span><h2>Objects worth<br/><em>knowing better.</em></h2></div><Link className="text-link" to="/store">Explore all 24 listings <ArrowUpRight size={16}/></Link></div>{featured.length?<ProductGrid products={featured}/>:<div className="loading-grid">{Array.from({length:6},(_,i)=><div className="skeleton" key={i}/>)}</div>}</div></section>
-    <section className="steps-section section-shell" id="how-it-works"><div className="section-heading"><span className="eyebrow">THREE STEPS. ONE CLEAR PATH.</span><h2>From factory floor<br/><em>to front door.</em></h2></div><div className="steps-grid"><article className="step-card step-sage"><span>01 / ORIGIN</span><PackageCheck size={26}/><h3>Factory-to-vault<br/><em>batch signing.</em></h3><p>Product metadata is hashed into a batch identity. The demo ledger shows the custody record from the first checkpoint.</p><b>PROVENANCE FIRST</b></article><article className="step-card step-off"><span>02 / LANDED COST</span><Globe2 size={26}/><h3>Pre-cleared<br/><em>HS-code duty lock.</em></h3><p>Seeded tariff rules calculate product value, import duty, VAT and carrier fees per destination.</p><b>NO SURPRISE FORMULA</b></article><article className="step-card step-tomato"><span>03 / DELIVERY</span><WalletCards size={26}/><h3>Automated<br/><em>escrow release.</em></h3><p>Checkout creates a held escrow state. Operators can review, hold or release it. No money moves in v1.</p><b>STATE, NOT SETTLEMENT</b></article></div></section>
-    <section className="telemetry-section"><div className="section-shell telemetry-layout"><div className="section-heading"><span className="eyebrow">A WINDOW INTO THE NETWORK</span><h2>Trust is built<br/><em>in the details.</em></h2><p>Simulated custody and clearance events flow into a public, sanitized channel. Operators receive richer telemetry after sign-in.</p><Link className="text-link" to="/dashboard/activity">View operations activity <ArrowUpRight size={16}/></Link></div><TelemetryPreview/></div></section>
-    <section className="section-shell calculator-section"><div className="calculator-intro"><span className="eyebrow">LANDED DUTY, MADE LEGIBLE</span><h2>One basket.<br/><em>No mystery fees.</em></h2><p>Choose a destination and inspect the estimate line by line. These values come from a small seeded demo tariff table, not live customs rates.</p><div className="calculator-footnotes"><div><Check size={16}/> Per-line half-up rounding</div><div><Check size={16}/> Transparent tariff source</div><div><Check size={16}/> Same formula at checkout</div></div></div><SavingsCalculator products={products}/></section>
-    <section className="final-cta section-shell"><div><span className="eyebrow">THE NEXT HANDOFF IS YOURS</span><h2>Shop with the<br/><em>full picture.</em></h2></div><div><p>Explore the catalog or look up a batch you already have. The proof is open to everyone.</p><div className="hero-actions"><Link className="button button-primary" to="/store">Browse verified goods <ArrowRight size={17}/></Link><Link className="button button-outline" to="/verify">Open verification portal</Link></div></div></section>
-  </main>;
+
+function CostCalculator({ products }: { products: Product[] }) {
+  const [category, setCategory] = useState<string>(CATEGORIES[0]);
+  const [productId, setProductId] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [origin, setOrigin] = useState('China');
+  const [city, setCity] = useState('Karachi');
+  const [filer, setFiler] = useState<'filer' | 'non-filer'>('filer');
+  const [quote, setQuote] = useState<DutyQuote | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const categoryProducts = useMemo(
+    () => products.filter(product => product.category === category),
+    [products, category]
+  );
+  const selectedProduct = products.find(product => product.id === productId && product.category === category)
+    ?? categoryProducts[0];
+
+  const calculate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedProduct) {
+      setError('The live product catalogue is required to calculate a quote.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setQuote(null);
+    try {
+      const result = await api<DutyQuote>('/duty/calculate', {
+        method: 'POST',
+        body: JSON.stringify({
+          destinationCountry: 'PK' satisfies Destination,
+          originCountry: origin,
+          destinationCity: city,
+          taxProfile: filer,
+          items: [{ productId: selectedProduct.id, quantity }]
+        })
+      });
+      setQuote(result);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The Atlas tariff service could not calculate this estimate.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rows: Array<[string, number | null, number | null, string]> = quote?.pakistanDemo
+    ? quote.pakistanDemo.components.map(component => [
+        component.label, component.amountUsd, component.amountPkr,
+        component.basis === 'demo-placeholder' ? 'DEMO PLACEHOLDER' : 'ATLAS SEED ESTIMATE'
+      ])
+    : [
+        ['Assessed item value', quote?.subtotal ?? null, null, ''],
+        ['Customs duty', quote?.duty ?? null, null, ''],
+        ['Sales tax / VAT', quote?.vat ?? null, null, ''],
+        ['Carrier fee', quote?.carrierFee ?? null, null, '']
+      ];
+
+  return (
+    <div className="cost-calculator-card">
+      <div className="cost-card-heading">
+        <div><span className="certificate-label">COST BREAKDOWN ESTIMATE</span><span className="estimate-currency">USD reference · Pakistan destination</span></div>
+        <span className="cost-source"><i /> Atlas tariff API</span>
+      </div>
+      <form className="cost-form" onSubmit={calculate}>
+        <label>Product category
+          <select value={category} onChange={event => { setCategory(event.target.value); setProductId(''); setQuote(null); }}>
+            {CATEGORIES.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </label>
+        <label>Catalog product
+          <select value={selectedProduct?.id ?? ''} onChange={event => { setProductId(event.target.value); setQuote(null); }} required>
+            {categoryProducts.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+          </select>
+        </label>
+        <div className="cost-input-pair">
+          <label>8-digit PCT / HS code
+            <input readOnly value={selectedProduct?.hsCode.replace(/\D/g, '') ?? ''} placeholder="Select a catalog product" />
+          </label>
+          <label>Price in USD
+            <input readOnly value={selectedProduct ? usd(selectedProduct.priceUsd) : ''} placeholder="From live product record" />
+          </label>
+        </div>
+        <div className="cost-input-pair">
+          <label>Origin country
+            <select value={origin} onChange={event => setOrigin(event.target.value)}>
+              {origins.map(value => <option key={value}>{value}</option>)}
+            </select>
+          </label>
+          <label>Destination city
+            <select value={city} onChange={event => setCity(event.target.value)}>
+              {destinations.map(value => <option key={value}>{value}</option>)}
+            </select>
+          </label>
+        </div>
+        <fieldset className="filer-toggle">
+          <legend>Tax profile</legend>
+          <button type="button" aria-pressed={filer === 'filer'} className={filer === 'filer' ? 'is-active' : ''} onClick={() => setFiler('filer')}>Filer</button>
+          <button type="button" aria-pressed={filer === 'non-filer'} className={filer === 'non-filer' ? 'is-active' : ''} onClick={() => setFiler('non-filer')}>Non-filer</button>
+        </fieldset>
+        <button className="button button-primary" disabled={busy || !selectedProduct}>
+          {busy ? 'Calculating from Atlas…' : 'Calculate landed cost'} <ArrowRight size={16} />
+        </button>
+      </form>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="cost-breakdown">
+        {rows.map(([label, valueUsd, valuePkr, source]) => (
+          <div className={valueUsd === null ? 'cost-row is-unconfigured' : 'cost-row'} key={label}>
+            <span>{label}<small className="cost-source-label">{source}</small></span>
+            <b>{valueUsd === null ? 'Not configured' : usd(valueUsd)}{valuePkr !== null && <small>{new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(valuePkr)}</small>}</b>
+          </div>
+        ))}
+        <div className="cost-row cost-total">
+          <span>Total landed cost {quote?.pakistanDemo && <small>DEMO ONLY · {quote.pakistanDemo.exchangeRatePkrPerUsd} PKR per USD</small>}</span>
+          <b>{quote ? usd(quote.total) : '—'}{quote?.pakistanDemo && <small>{new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(quote.pakistanDemo.totalPkr)}</small>}</b>
+        </div>
+      </div>
+      <p className="cost-disclaimer">
+        Selected context: origin {origin} · destination {city} · {filer === 'filer' ? 'Filer' : 'Non-filer'}.
+        The additional customs duty, regulatory duty, federal excise duty, withholding and platform-fee values are visibly marked demo placeholders. The USD/PKR conversion is also a fixed demo placeholder, not a live market rate or official assessment.
+        {quote?.pakistanDemo && <strong className="demo-placeholder-disclosure">{quote.pakistanDemo.disclosure}</strong>}
+      </p>
+    </div>
+  );
+}
+
+export function HomePage() {
+  const addToCart = useCart(state => state.add);
+  const [catalogCategory, setCatalogCategory] = useState('All');
+  const productsQuery = useQuery({
+    queryKey: ['landing-catalog'],
+    queryFn: () => api<{ products: Product[]; total: number }>('/products?sort=authenticity'),
+    refetchInterval: 30_000
+  });
+  const metricsQuery = useQuery({
+    queryKey: ['landing-metrics'],
+    queryFn: () => api<PublicMetrics>('/public/metrics'),
+    refetchInterval: 30_000
+  });
+  const healthQuery = useQuery({
+    queryKey: ['landing-health'],
+    queryFn: () => api<Health>('/health'),
+    refetchInterval: 15_000,
+    retry: 1
+  });
+
+  const products = productsQuery.data?.products ?? [];
+  const filteredProducts = useMemo(
+    () => catalogCategory === 'All' ? products : products.filter(product => product.category === catalogCategory),
+    [catalogCategory, products]
+  );
+  const metrics = metricsQuery.data?.database;
+  const isApiHealthy = healthQuery.data?.status === 'ok' && healthQuery.data.database === 'ok';
+
+  return (
+    <main className="home-page editorial-home">
+      <section className="editorial-hero section-shell" id="trusted-imports">
+        <div className="editorial-hero-copy">
+          <SectionEyebrow>01 / TRUSTED IMPORTS FOR PAKISTAN</SectionEyebrow>
+          <h1>Supplier-submitted records. Sourced estimates. Clear order states.</h1>
+          <p>
+            Inspect published batch records, review versioned landed-cost estimates and follow transparent order states
+            from origin to delivery. One record for every important handoff.
+          </p>
+          <div className="editorial-hero-actions">
+            <Link className="button button-primary" to="/store">Browse product catalog <ArrowRight size={17} /></Link>
+            <Link className="button button-outline" to="/verify">Check a batch record</Link>
+          </div>
+          <div className="live-database-counters" aria-live="polite">
+            <div><b>{metrics ? metrics.batchProvenanceRecords.toLocaleString() : '—'}</b><span>Batch provenance records</span></div>
+            <div><b>{metrics ? metrics.registeredSuppliers.toLocaleString() : '—'}</b><span>Registered suppliers</span></div>
+            <div><b>{metrics ? metrics.orderRecords.toLocaleString() : '—'}</b><span>Order records</span></div>
+          </div>
+          {metricsQuery.isError && <small className="inline-status-error">Live database counters are currently unavailable.</small>}
+        </div>
+        <div className="editorial-hero-visual"><VerificationCard /></div>
+      </section>
+
+      <div className="logistics-ticker" aria-label="Pakistan trade and carrier reference points">
+        <span>Karachi Port</span><i>·</i><span>Port Qasim</span><i>·</i><span>Lahore Dry Port</span><i>·</i><span>TCS</span><i>·</i><span>Leopards</span><i>·</i><span>M&amp;P</span>
+      </div>
+      <p className="ticker-disclaimer">Port, courier and carrier names are reference points only; no live logistics or partner integration is asserted.</p>
+
+      <section className="editorial-section section-shell" id="how-it-works">
+        <div className="editorial-section-heading">
+          <SectionEyebrow>02 / TRACEABILITY / 4 CHECKPOINTS</SectionEyebrow>
+          <h2>Four checkpoints between the factory and your door.</h2>
+          <p>Each step leaves a structured record that the next stakeholder can inspect.</p>
+        </div>
+        <div className="checkpoint-grid">
+          {roleSteps.map(step => {
+            const Icon = step.icon;
+            return (
+              <article className="checkpoint-card" key={step.number}>
+                <div className="checkpoint-card-top"><span>{step.number}</span><Icon size={22} /></div>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="editorial-section cost-section" id="calculator">
+        <div className="section-shell cost-layout">
+          <div className="editorial-section-heading">
+            <SectionEyebrow>03 / PRICE CERTAINTY / LANDED COST</SectionEyebrow>
+            <h2>Build an itemised landed-cost estimate.</h2>
+            <p>Choose a live product and calculate against the versioned Pakistan tariff records stored in Atlas.</p>
+            <div className="cost-assurances">
+              <span><CheckCircle2 size={16} /> Product and batch data from Atlas</span>
+              <span><CheckCircle2 size={16} /> Published duty and VAT rules</span>
+              <span><CheckCircle2 size={16} /> Unconfigured charges stay visible</span>
+            </div>
+          </div>
+          <CostCalculator products={products} />
+        </div>
+      </section>
+
+      <section className="editorial-section section-shell catalog-section" id="catalog">
+        <div className="editorial-section-heading catalog-heading">
+          <div>
+            <SectionEyebrow>04 / SUPPLIER RECORDS / CATALOG</SectionEyebrow>
+            <h2>Published catalog records, traceable to origin.</h2>
+          </div>
+          <Link className="text-link" to="/store">Open full catalog <ArrowRight size={16} /></Link>
+        </div>
+        <div className="catalog-filter-row" role="group" aria-label="Filter products by category">
+          {['All', ...CATEGORIES].map(category => (
+            <button key={category} type="button" className={catalogCategory === category ? 'is-active' : ''} aria-pressed={catalogCategory === category} onClick={() => setCatalogCategory(category)}>
+              {category}
+            </button>
+          ))}
+          <span className="catalog-live-count">{productsQuery.data ? `${filteredProducts.length} LIVE RECORDS` : 'ATLAS CATALOG'}</span>
+        </div>
+        {productsQuery.isLoading && <div className="catalog-state"><span className="status-spinner" /> Connecting to Atlas product records…</div>}
+        {productsQuery.isError && <div className="catalog-state catalog-state-error" role="alert">The Atlas catalog could not be loaded. Check the API status below and retry the page.</div>}
+        {productsQuery.isSuccess && filteredProducts.length === 0 && <div className="catalog-state">No published products match this category.</div>}
+        {filteredProducts.length > 0 && (
+          <div className="supplier-record-grid">
+            {filteredProducts.map(product => (
+              <article className="supplier-record-card" key={product.id}>
+                <div className="supplier-record-image">
+                  <img src={product.imageUrl || '/product-fallback.svg'} alt={product.name} loading="lazy" />
+                  <span className={product.status === 'verified' ? 'record-state state-verified' : 'record-state'}>{product.status.replace('_', ' ')}</span>
+                </div>
+                <div className="supplier-record-body">
+                  <div className="supplier-record-meta"><span>{product.sku}</span><span>{product.category}</span></div>
+                  <h3>{product.name}</h3>
+                  <p>{product.brand} · Origin hub {product.originHubId.replace('HUB-', '')}</p>
+                  <div className="record-hash-label">SHA-256 BATCH HASH</div>
+                  <code className="record-hash">{product.batchHash}</code>
+                  <div className="record-authenticity"><span>Authenticity score</span><b>{product.authenticityScore}/100</b></div>
+                  <div className="record-card-actions">
+                    <Link to={`/verify?query=${encodeURIComponent(product.batchHash)}`}>Quick verify</Link>
+                    <button type="button" onClick={() => addToCart(product)}><ShoppingBag size={15} /> Add to cart</button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="editorial-section reliability-section" id="reliability">
+        <div className="section-shell">
+          <div className="editorial-section-heading">
+            <SectionEyebrow>05 / RELIABILITY / SYSTEM STATUS</SectionEyebrow>
+            <h2>Operational status, published.</h2>
+            <p>Live API health, request telemetry and aggregate Atlas record counts. No static demo values are substituted when the service is offline.</p>
+          </div>
+          <div className="reliability-grid">
+            <article className="reliability-card">
+              <span className="reliability-label">API STATUS</span>
+              <strong className={isApiHealthy ? 'status-good' : 'status-down'}>{healthQuery.isLoading ? 'CHECKING' : isApiHealthy ? 'HEALTHY' : 'UNAVAILABLE'}</strong>
+              <small>{healthQuery.data?.persistence ?? 'Atlas connection not confirmed'}</small>
+            </article>
+            <article className="reliability-card">
+              <span className="reliability-label">API P95 LATENCY</span>
+              <strong>{metricsQuery.data ? `${metricsQuery.data.api.p95LatencyMs} ms` : healthQuery.data ? `${healthQuery.data.p95LatencyMs} ms` : '—'}</strong>
+              <small>Rolling sample from the current API process</small>
+            </article>
+            <article className="reliability-card">
+              <span className="reliability-label">PUBLISHED PRODUCTS</span>
+              <strong>{metrics ? metrics.products.toLocaleString() : '—'}</strong>
+              <small>Published Atlas product records</small>
+            </article>
+            <article className="reliability-card">
+              <span className="reliability-label">REGISTERED SUPPLIERS</span>
+              <strong>{metrics ? metrics.registeredSuppliers.toLocaleString() : '—'}</strong>
+              <small>Supplier profiles in Atlas</small>
+            </article>
+          </div>
+          <div className="reliability-foot">
+            <span><Clock3 size={15} /> Refreshes automatically</span>
+            <span><Boxes size={15} /> {metrics ? metrics.orderRecords.toLocaleString() : '—'} order records</span>
+            <Link to="/api/health" target="_blank">Open health endpoint <ArrowRight size={14} /></Link>
+          </div>
+          {(healthQuery.isError || metricsQuery.isError) && <p className="inline-status-error">A live telemetry request failed. Values are left blank rather than replaced with sample data.</p>}
+        </div>
+      </section>
+
+      <section className="final-cta section-shell">
+        <div><SectionEyebrow>VERIFYMART AI / PAKISTAN</SectionEyebrow><h2>Make the next handoff<br />a little more certain.</h2></div>
+        <div><p>Browse the supplier catalog, or inspect a batch hash before you place an order.</p><div className="editorial-hero-actions"><Link className="button button-primary" to="/store">Browse catalog <ArrowRight size={16} /></Link><Link className="button button-outline" to="/register">Create account</Link></div></div>
+      </section>
+    </main>
+  );
 }
