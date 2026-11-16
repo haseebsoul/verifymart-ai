@@ -8,6 +8,7 @@ import { appendAuditEvent } from './repositories/audit.js';
 import { createMongoCheckout } from './repositories/checkout.js';
 import type { OrderDocument, ProductDocument } from './repositories/contracts.js';
 import { calculateAtlasDuty } from './services/duty-atlas.js';
+import { canTransitionEscrow } from './services/escrow-state.js';
 
 export const atlasCommerceRouter = Router();
 
@@ -159,14 +160,13 @@ async function transitionEscrow(
     await session.withTransaction(async () => {
       const current = await orders.findOne({ _id: orderId }, { session });
       if (!current) return;
-      const expectedState = nextState === 'held' ? 'on_hold' : 'held';
-      if (current.state !== expectedState) {
-        throw Object.assign(new Error('Escrow must be ' + expectedState + ' before transition to ' + nextState + '.'), {
+      if (!canTransitionEscrow(current.state, nextState)) {
+        throw Object.assign(new Error('Escrow cannot transition from ' + current.state + ' to ' + nextState + '.'), {
           status: 409, code: 'INVALID_ESCROW_STATE'
         });
       }
       const result = await orders.findOneAndUpdate(
-        { _id: orderId, state: expectedState },
+        { _id: orderId, state: current.state },
         {
           $set: {
             state: nextState,
