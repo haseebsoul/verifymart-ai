@@ -156,7 +156,7 @@ atlasCommerceRouter.get(
 export function isEscrowTransitionAllowed(from: OrderState, to: OrderState): boolean {
   const allowed: Record<OrderState, OrderState[]> = {
     held: ['released', 'on_hold', 'refunded'],
-    on_hold: ['held', 'refunded'],
+    on_hold: ['held'],
     released: [],
     refunded: []
   };
