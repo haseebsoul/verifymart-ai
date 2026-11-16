@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Router, type Response } from 'express';
 import type { Collection } from 'mongodb';
 import rateLimit from 'express-rate-limit';
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { authenticateAtlas } from './middleware/atlas-auth.js';
 import { asyncHandler } from './middleware/http.js';
-import type { UserDocument } from './repositories/contracts.js';
+import type { MerchantDocument, Role, UserDocument } from './repositories/contracts.js';
 import { MongoUserRepository } from './repositories/users.js';
 import { appendAuditEvent } from './repositories/audit.js';
 
@@ -22,16 +22,60 @@ atlasAuthRouter.get('/auth/mode', (_req, res) => {
 const cookieName = 'verifymart_refresh';
 const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
+const stakeholderRoles = ['shopper', 'merchant', 'inventory_manager', 'operator', 'admin'] as const;
+const roleLabels: Record<Role, string> = {
+  shopper: 'Shopper / Buyer',
+  merchant: 'Merchant / Supplier',
+  inventory_manager: 'Inventory Manager',
+  operator: 'Operations Auditor',
+  admin: 'System Administrator'
+};
+
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.string().trim().email().max(254),
-  password: z.string().min(10).max(128)
-}).strict();
+  password: z.string().min(10).max(128),
+  role: z.enum(stakeholderRoles).default('shopper'),
+  businessName: z.string().trim().min(2).max(120).optional(),
+  country: z.enum(['US', 'UK', 'EU', 'AE', 'PK', 'SG']).optional(),
+  inviteKey: z.string().max(256).optional()
+}).strict().superRefine((value, context) => {
+  if (value.role === 'merchant' && (!value.businessName || !value.country)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Business name and country are required for merchant registration.',
+      path: ['businessName']
+    });
+  }
+});
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
-  password: z.string().min(1).max(128)
+  password: z.string().min(1).max(128),
+  selectedRole: z.enum(stakeholderRoles).optional()
 }).strict();
+
+const demoLoginSchema = z.object({ role: z.enum(stakeholderRoles) }).strict();
+
+function configuredRoleInviteKey(role: Role): string | undefined {
+  if (role === 'admin') return process.env.ADMIN_INVITE_KEY?.trim() || undefined;
+  const configured = process.env.ROLE_INVITE_KEYS?.trim();
+  if (!configured) return undefined;
+  try {
+    const values = JSON.parse(configured) as Record<string, unknown>;
+    const value = values[role];
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function inviteKeyMatches(supplied: string | undefined, expected: string | undefined): boolean {
+  if (!supplied || !expected) return false;
+  const left = Buffer.from(supplied);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false });
@@ -102,13 +146,42 @@ async function newRefreshSession(userId: string, res: Response, userCollection: 
 
 atlasAuthRouter.post('/auth/register', registerLimiter, asyncHandler(async (req, res) => {
   const input = registerSchema.parse(req.body);
-  const users = getAtlasDb().collection<UserDocument>('users');
+  const role = input.role as Role;
+
+  if (['inventory_manager', 'operator', 'admin'].includes(role)) {
+    const expected = configuredRoleInviteKey(role);
+    if (!expected) {
+      res.status(503).json({
+        error: {
+          code: 'ROLE_INVITE_NOT_CONFIGURED',
+          message: role === 'admin'
+            ? 'Administrator self-registration is disabled until ADMIN_INVITE_KEY is configured on the backend.'
+            : 'This stakeholder role requires its matching key in ROLE_INVITE_KEYS on the backend.',
+          requestId: req.requestId
+        }
+      });
+      return;
+    }
+    if (!inviteKeyMatches(input.inviteKey, expected)) {
+      res.status(403).json({
+        error: {
+          code: 'ROLE_INVITE_REQUIRED',
+          message: 'A valid invitation key is required for ' + roleLabels[role] + ' registration.',
+          requestId: req.requestId
+        }
+      });
+      return;
+    }
+  }
+
+  const database = getAtlasDb();
+  const users = database.collection<UserDocument>('users');
   const user: UserDocument = {
     _id: 'usr_' + randomUUID().replaceAll('-', '').slice(0, 18),
     name: input.name,
     email: input.email.toLowerCase(),
     passwordHash: await bcrypt.hash(input.password, 12),
-    role: 'shopper',
+    role,
     failedLogins: 0,
     lockedUntil: null,
     lastLogin: null,
@@ -117,18 +190,48 @@ atlasAuthRouter.post('/auth/register', registerLimiter, asyncHandler(async (req,
     refreshSessions: []
   };
 
+  const merchant: MerchantDocument | undefined = role === 'merchant'
+    ? {
+        _id: 'mrc_' + randomUUID().replaceAll('-', '').slice(0, 18),
+        userId: user._id,
+        businessName: input.businessName!,
+        country: input.country!,
+        status: 'pending',
+        trustScore: 0,
+        createdAt: user.createdAt,
+        updatedAt: user.createdAt
+      }
+    : undefined;
+
+  const session = database.client.startSession();
   try {
-    await users.insertOne(user);
+    await session.withTransaction(async () => {
+      await users.insertOne(user, { session });
+      if (merchant) await database.collection<MerchantDocument>('merchants').insertOne(merchant, { session });
+    });
   } catch (error) {
     if (error instanceof MongoServerError && error.code === 11000) {
       res.status(409).json({ error: { code: 'EMAIL_IN_USE', message: 'An account with this email already exists.', requestId: req.requestId } });
       return;
     }
     throw error;
+  } finally {
+    await session.endSession();
   }
 
+  await appendAuditEvent({
+    actorId: user._id,
+    action: 'ACCOUNT_REGISTERED',
+    targetType: 'user',
+    targetId: user._id,
+    details: { role, merchantApplicationCreated: Boolean(merchant) }
+  });
   await newRefreshSession(user._id, res, users);
-  res.status(201).json({ user: safeUser(user), accessToken: issueAccessToken(user) });
+  res.status(201).json({
+    user: safeUser(user),
+    accessToken: issueAccessToken(user),
+    ...(merchant ? { merchant: { id: merchant._id, status: merchant.status } } : {})
+  });
 }));
 
 atlasAuthRouter.post('/auth/login', loginLimiter, asyncHandler(async (req, res) => {
@@ -136,7 +239,7 @@ atlasAuthRouter.post('/auth/login', loginLimiter, asyncHandler(async (req, res) 
   const users = getAtlasDb().collection<UserDocument>('users');
   const user = await users.findOne({ email: input.email.toLowerCase() });
 
-  // Same response for unknown, disabled and incorrect-password accounts.
+  // Keep the same response for unknown, disabled and incorrect-password accounts.
   if (!user || user.disabledAt) {
     invalidCredentials(res, req.requestId);
     return;
@@ -150,6 +253,59 @@ atlasAuthRouter.post('/auth/login', loginLimiter, asyncHandler(async (req, res) 
   if (!valid) {
     await new MongoUserRepository().incrementFailedLogin(user._id);
     invalidCredentials(res, req.requestId);
+    return;
+  }
+
+  if (input.selectedRole && input.selectedRole !== user.role) {
+    res.status(403).json({
+      error: {
+        code: 'ROLE_MISMATCH',
+        message: 'This account is registered as ' + roleLabels[user.role] + '. Please select ' + roleLabels[user.role] + ' above to sign in.',
+        actualRole: user.role,
+        requestId: req.requestId
+      }
+    });
+    return;
+  }
+
+  await new MongoUserRepository().clearFailedLogins(user._id);
+  await newRefreshSession(user._id, res, users);
+  res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
+}));
+
+const demoAccounts: Record<Role, string> = {
+  shopper: 'shopper@verifymart.ai',
+  merchant: 'merchant@verifymart.ai',
+  inventory_manager: 'inventory@verifymart.ai',
+  operator: 'auditor@verifymart.ai',
+  admin: 'admin@verifymart.ai'
+};
+
+/**
+ * The browser never receives DEMO_PASSWORD. This shortcut is only enabled
+ * when the server has an explicit demo password and is not running in production.
+ */
+atlasAuthRouter.post('/auth/demo-login', loginLimiter, asyncHandler(async (req, res) => {
+  if (process.env.NODE_ENV === 'production' || !process.env.DEMO_PASSWORD) {
+    res.status(404).json({ error: { code: 'DEMO_ACCESS_DISABLED', message: 'Quick demo access is disabled.', requestId: req.requestId } });
+    return;
+  }
+
+  const input = demoLoginSchema.parse(req.body);
+  const users = getAtlasDb().collection<UserDocument>('users');
+  const user = await users.findOne({
+    email: demoAccounts[input.role],
+    role: input.role,
+    $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+  });
+  if (!user || !(await bcrypt.compare(process.env.DEMO_PASSWORD, user.passwordHash))) {
+    res.status(503).json({
+      error: {
+        code: 'DEMO_ACCOUNT_UNAVAILABLE',
+        message: 'The seeded ' + roleLabels[input.role] + ' account is unavailable. Confirm the development seed and DEMO_PASSWORD configuration.',
+        requestId: req.requestId
+      }
+    });
     return;
   }
 
