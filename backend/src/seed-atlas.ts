@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Long, MongoClient } from 'mongodb';
+import { ATLAS_OPERATIONAL_COLLECTIONS } from './infrastructure/atlas.js';
 import { inspectExpectedAtlasIndexes } from './infrastructure/indexes.js';
 import type {
   HubDocument,
@@ -74,14 +75,17 @@ async function seed():Promise<void> {
   if(process.env.NODE_ENV==='production') throw new Error('Atlas demo seed is disabled in production.');
   const dbName=required('MONGODB_DB_NAME');
   if(!['verifymart_dev','verifymart_staging'].includes(dbName)) throw new Error('Atlas demo seed is restricted to dev/staging.');
+  const auditReadUri=required('MONGODB_AUDIT_READ_URI');
   const client=new MongoClient(required('MONGODB_URI'),{appName:process.env.MONGODB_APP_NAME??'VerifyMart-Seed'});
+  let auditReader:MongoClient|undefined;
   try {
     await client.connect();
     const database=client.db(dbName);
     await database.command({ping:1});
-    const existing = new Set(await database.listCollections({}, {nameOnly:true}).map(item=>item.name).toArray());
-    const required = ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger'];
-    const missing = required.filter(name=>!existing.has(name));
+    const existing = new Set(await database.listCollections(
+      {name:{$in:[...ATLAS_OPERATIONAL_COLLECTIONS]}}, {nameOnly:true}
+    ).map(item=>item.name).toArray());
+    const missing = ATLAS_OPERATIONAL_COLLECTIONS.filter(name=>!existing.has(name));
     if (missing.length) throw new Error('Atlas collections are not provisioned: '+missing.join(', '));
     const missingIndexes = await inspectExpectedAtlasIndexes(database);
     if (missingIndexes.length) throw new Error('Provisioned Atlas indexes are missing: ' + missingIndexes.join(', '));
@@ -131,7 +135,7 @@ async function seed():Promise<void> {
       const baseId='tariff_'+country.toLowerCase();
       await tariffCollection.updateOne({_id:baseId},{$setOnInsert:{
         _id:baseId,hsPrefix:'',country,dutyRateBps:Math.round(rates.duty*10000),
-        vatRateBps:Math.round(rates.vat*10000),vatIncludesCarrier:true,source:'seed-tariff-v1'
+        vatRateBps:Math.round(rates.vat*10000),vatIncludesCarrier:true,source:'demo-placeholder-tariff-v1'
       }},{upsert:true});
       const prefixes=new Map<string,number>();
       for(const item of catalog) {
@@ -142,7 +146,7 @@ async function seed():Promise<void> {
         const id=baseId+'_'+prefix.replaceAll('.','');
         await tariffCollection.updateOne({_id:id},{$setOnInsert:{
           _id:id,hsPrefix:prefix,country,dutyRateBps:Math.round(Math.min(0.45,rates.duty+productRate)*10000),
-          vatRateBps:Math.round(rates.vat*10000),vatIncludesCarrier:true,source:'seed-tariff-v1'
+          vatRateBps:Math.round(rates.vat*10000),vatIncludesCarrier:true,source:'demo-placeholder-tariff-v1'
         }},{upsert:true});
       }
     }
@@ -167,8 +171,13 @@ async function seed():Promise<void> {
       await threatCollection.updateOne({_id:threat._id},{$setOnInsert:threat},{upsert:true});
     }
 
-    const settingDefaults:[string,number][]=[
-      ['authenticityConfidenceFloor',92],['customsSurgeBuffer',15],['maxEscrowHoldHours',72]
+    const settingDefaults:Array<[string,number|boolean]>=[
+      ['authenticityConfidenceFloor',92],['customsSurgeBuffer',15],['maxEscrowHoldHours',72],
+      // Demo placeholders only: not official Pakistan customs or foreign-exchange data.
+      ['pkAdditionalCustomsDutyBps',200],['pkRegulatoryDutyBps',100],
+      ['pkFederalExciseDutyBps',50],['pkIncomeTaxWithholdingFilerBps',100],
+      ['pkIncomeTaxWithholdingNonFilerBps',200],['pkPlatformFeeBps',150],
+      ['demoUsdToPkrRate',280],['pkRatesAreDemoPlaceholders',true]
     ];
     for(const [key,value] of settingDefaults) {
       await database.collection<SettingDocument>('settings').updateOne({key},{$setOnInsert:{_id:key,key,value,updatedAt:now}},{upsert:true});
@@ -217,14 +226,28 @@ async function seed():Promise<void> {
       }
     }
 
+    // Count the ten operational collections with the app principal. The
+    // auditLog count is queried separately with the find-only reader principal.
     const counts:Record<string,number>={};
-    for(const name of ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger']) {
+    for(const name of ATLAS_OPERATIONAL_COLLECTIONS) {
       counts[name]=await database.collection(name).countDocuments();
     }
-    console.log('Atlas dev seed completed. Provenance events and seed metrics are marked simulated.');
-    console.log(JSON.stringify(counts));
+    auditReader=new MongoClient(auditReadUri,{
+      appName:(process.env.MONGODB_APP_NAME??'VerifyMart-Seed')+'-Audit-Reader'
+    });
+    await auditReader.connect();
+    const auditDatabase=auditReader.db(dbName);
+    await auditDatabase.command({ping:1});
+    counts.auditLog=await auditDatabase.collection('auditLog').countDocuments();
+    const collectionCounts=Object.fromEntries(
+      [...ATLAS_OPERATIONAL_COLLECTIONS,'auditLog'].map(name=>[name,counts[name]??0])
+    );
+    console.log('Atlas dev seed completed. Provenance, tariffs, Pakistan fees and USD/PKR are demonstrator placeholders only.');
+    if(!demoPassword) console.warn('DEMO_PASSWORD is not set; demo accounts for the five roles were skipped.');
+    console.log('Actual Atlas collection counts after seed:');
+    console.log(JSON.stringify(collectionCounts,null,2));
   } finally {
-    await client.close();
+    await Promise.all([client.close(),auditReader?.close().catch(()=>undefined)]);
   }
 }
 
