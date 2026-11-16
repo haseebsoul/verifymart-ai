@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import Database from 'better-sqlite3';
-import { buildCollections, toJsonObject } from '../src/migrations/sqlite-to-atlas.js';
+import type Database from 'better-sqlite3';
+
+// SQLite is a migration-only optional native module. Atlas-only installation
+// must still run the main test suite when this native dependency is unavailable.
+const sqliteModule = await import('better-sqlite3').catch(() => undefined);
+const migrationModule = sqliteModule ? await import('../src/migrations/sqlite-to-atlas.js') : undefined;
+const migrationSuite = sqliteModule && migrationModule ? describe : describe.skip;
 
 let source: Database.Database | undefined;
 afterEach(() => {
@@ -9,7 +14,8 @@ afterEach(() => {
 });
 
 function fixture(): Database.Database {
-  const database = new Database(':memory:');
+  if (!sqliteModule) throw new Error('Optional better-sqlite3 package is not installed.');
+  const database = new sqliteModule.default(':memory:');
   database.exec(`
     CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT,email TEXT,password_hash TEXT,role TEXT,failed_logins INTEGER,locked_until TEXT,last_login TEXT,created_at TEXT);
     CREATE TABLE sessions(user_id TEXT,token_hash TEXT,expires_at TEXT,created_at TEXT);
@@ -43,10 +49,10 @@ function fixture(): Database.Database {
   return database;
 }
 
-describe('SQLite to Atlas migration planning', () => {
+migrationSuite('SQLite to Atlas migration planning (optional native dependency)', () => {
   it('preserves IDs, converts money to BSON Long, and marks migrated documents', () => {
     source = fixture();
-    const plan = buildCollections(source);
+    const plan = migrationModule!.buildCollections(source);
     const byName = new Map(plan.map(collection => [collection.name, collection.documents]));
     const user = byName.get('users')?.[0];
     const order = byName.get('orders')?.[0] as { _id: string; userId: string; quote: { totalCents: { toString(): string } }; migratedFrom: string };
@@ -62,7 +68,7 @@ describe('SQLite to Atlas migration planning', () => {
   });
 
   it('aborts rather than replacing malformed source JSON with an empty object', () => {
-    expect(() => toJsonObject('{bad json', 'audit record a2')).toThrow(/migration aborted to avoid discarding data/i);
+    expect(() => migrationModule!.toJsonObject('{bad json', 'audit record a2')).toThrow(/migration aborted to avoid discarding data/i);
   });
 
   it('rejects valid JSON values that are not objects', () => {

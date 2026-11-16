@@ -71,14 +71,8 @@ const countries = [
 ] as const;
 
 function workspaceFor(user: PublicUser): string {
-  switch (user.role) {
-    case 'admin': return '/dashboard/admin';
-    case 'merchant': return '/dashboard/merchant';
-    case 'inventory_manager': return '/dashboard/inventory';
-    case 'operator': return '/dashboard/operator';
-    case 'shopper': return '/dashboard/shopper';
-    default: return '/dashboard';
-  }
+  const routes:Record<string,string>={shopper:'/dashboard/shopper',merchant:'/dashboard/merchant',inventory_manager:'/dashboard/inventory',operator:'/dashboard/operator',admin:'/dashboard/admin'};
+  return routes[user.role]??'/dashboard';
 }
 
 export function LoginPage() {
@@ -101,7 +95,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const selected = roles.find(role => role.id === selectedRole) ?? roles[0]!;
+  const selected = roles.find(role => role.id === selectedRole) ?? roles[0];
   const needsInvite = selectedRole === 'inventory_manager' || selectedRole === 'operator' || selectedRole === 'admin';
 
   const finishSignIn = (user: PublicUser) => navigate(workspaceFor(user), { replace: true });

@@ -13,19 +13,15 @@ const roleTitles: Record<string, string> = {
 };
 
 function workspacePath(role: string): string {
-  if (role === 'admin') return '/dashboard/admin';
-  const paths: Record<string, string> = {
-    admin: '/dashboard/admin', operator: '/dashboard/operator',
-    inventory_manager: '/dashboard/inventory', merchant: '/dashboard/merchant',
-    shopper: '/dashboard/shopper'
-  };
-  return paths[role] ?? '/dashboard';
+  const routes:Record<string,string>={shopper:'/dashboard/shopper',merchant:'/dashboard/merchant',inventory_manager:'/dashboard/inventory',operator:'/dashboard/operator',admin:'/dashboard/admin'};
+  return routes[role]??'/dashboard';
 }
 
 export function Header() {
   const { items, setOpen } = useCart();
   const { user, logout } = useAuth();
   const [mobile, setMobile] = useState(false);
+  const [language,setLanguage]=useState<'EN'|'اردو'>('EN');
   const count = items.reduce((sum, item) => sum + item.quantity, 0);
   const links: Array<[string, string]> = [
     ['How it works', '/#how-it-works'],
@@ -46,6 +42,7 @@ export function Header() {
         ))}
       </nav>
       <div className="header-actions">
+        <button className="language-toggle" type="button" aria-label="Display language selector" aria-pressed={language==='اردو'} onClick={()=>setLanguage(value=>value==='EN'?'اردو':'EN')}>{language}</button>
         {user && (
           <div className="header-user">
             <span className="header-user-name">{user.name}</span>
@@ -90,14 +87,14 @@ export function SiteFooter() {
           <p>Proof at every handoff.<br />Clarity at every checkout.</p>
         </div>
         <div className="footer-links">
-          <div><strong>Explore</strong><Link to="/store">Catalog</Link><Link to="/verify">Batch lookup</Link></div>
-          <div><strong>Workspaces</strong><Link to="/dashboard/shopper">Buyer</Link><Link to="/dashboard/merchant">Supplier</Link><Link to="/dashboard/inventory">Inventory Manager</Link><Link to="/dashboard/operator">SRE Operator</Link><Link to="/dashboard/admin">Administrator</Link></div>
-          <div><strong>Engineering</strong><a href="/api/health" target="_blank" rel="noreferrer">API health</a><a href="/api/public/metrics" target="_blank" rel="noreferrer">Public metrics</a><Link to="/register">Create account</Link></div>
+          <div><strong>Explore</strong><Link to="/store">Catalog</Link><Link to="/verify">Batch lookup</Link><Link to="/#calculator">Landed-cost estimate</Link></div>
+          <div><strong>Workspaces</strong><Link to="/dashboard/shopper">Shopper</Link><Link to="/dashboard/merchant">Merchant</Link><Link to="/dashboard/inventory">Inventory manager</Link><Link to="/dashboard/operator">Operator</Link><Link to="/dashboard/admin">Administrator</Link></div>
+          <div><strong>Platform</strong><Link to="/register">Supplier registration</Link><a href="/api/health" target="_blank" rel="noreferrer">API health</a></div>
         </div>
       </div>
       <div className="footer-bottom">
         <span>© 2026 VerifyMart AI · Atlas development environment</span>
-        <span className="simulated-note"><span className="dot" /> Provenance events, tariff estimates and escrow are demonstrator workflows.</span>
+        <span className="simulated-note"><span className="dot" /> Provenance, Pakistan tariff/FX estimates and escrow are simulated; no real funds or official customs determination.</span>
       </div>
     </footer>
   );

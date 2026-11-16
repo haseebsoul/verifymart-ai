@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { Long, MongoClient } from 'mongodb';
+import { ATLAS_OPERATIONAL_COLLECTIONS } from './infrastructure/atlas.js';
 import { inspectExpectedAtlasIndexes } from './infrastructure/indexes.js';
 import type {
   HubDocument,
@@ -79,9 +80,10 @@ async function seed():Promise<void> {
     await client.connect();
     const database=client.db(dbName);
     await database.command({ping:1});
-    const existing = new Set(await database.listCollections({}, {nameOnly:true}).map(item=>item.name).toArray());
-    const requiredCollections = ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger'];
-    const missing = requiredCollections.filter(name=>!existing.has(name));
+    const existing = new Set(await database.listCollections(
+      {name:{$in:[...ATLAS_OPERATIONAL_COLLECTIONS]}}, {nameOnly:true}
+    ).map(item=>item.name).toArray());
+    const missing = ATLAS_OPERATIONAL_COLLECTIONS.filter(name=>!existing.has(name));
     if (missing.length) throw new Error('Atlas collections are not provisioned: '+missing.join(', '));
     const missingIndexes = await inspectExpectedAtlasIndexes(database);
     if (missingIndexes.length) throw new Error('Provisioned Atlas indexes are missing: ' + missingIndexes.join(', '));
@@ -232,7 +234,7 @@ async function seed():Promise<void> {
       await auditReader.close();
     }
     console.log('Atlas development seed completed. Seed provenance and tariff components are simulated/demo records.');
-    console.log('Verified collection counts (auditLog counted through the dedicated find-only principal):');
+    console.log('Actual Atlas collection counts after seed (auditLog counted through the find-only reader):');
     console.log(JSON.stringify(counts,null,2));
   } finally {
     await client.close();

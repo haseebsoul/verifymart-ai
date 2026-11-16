@@ -2,10 +2,11 @@ import { Db, MongoClient, type Collection, type Document } from 'mongodb';
 import type { AuditLogDocument } from '../repositories/contracts.js';
 import { inspectExpectedAtlasIndexes } from './indexes.js';
 
-export const ATLAS_COLLECTIONS = [
+export const ATLAS_OPERATIONAL_COLLECTIONS = [
   'users', 'merchants', 'products', 'hubs', 'tariffRules', 'orders',
-  'threats', 'inventoryAdjustments', 'auditLog', 'settings', 'trustLedger'
+  'threats', 'inventoryAdjustments', 'settings', 'trustLedger'
 ] as const;
+export const ATLAS_COLLECTIONS = [...ATLAS_OPERATIONAL_COLLECTIONS, 'auditLog'] as const;
 
 export type AtlasCollectionName = (typeof ATLAS_COLLECTIONS)[number];
 
@@ -62,9 +63,12 @@ export async function connectAtlas(): Promise<Db> {
     await database.command({ ping: 1 });
 
     const existing = new Set(
-      await database.listCollections({}, { nameOnly: true }).map((item) => item.name).toArray()
+      await database.listCollections(
+        { name: { $in: [...ATLAS_OPERATIONAL_COLLECTIONS] } },
+        { nameOnly: true }
+      ).map((item) => item.name).toArray()
     );
-    const missingCollections = ATLAS_COLLECTIONS.filter((collection) => !existing.has(collection));
+    const missingCollections = ATLAS_OPERATIONAL_COLLECTIONS.filter((collection) => !existing.has(collection));
     if (missingCollections.length) {
       throw new Error('Atlas database is missing provisioned collections: ' + missingCollections.join(', '));
     }

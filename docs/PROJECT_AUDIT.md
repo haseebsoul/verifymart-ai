@@ -186,3 +186,24 @@ Backend V8 coverage for that run: **15.02% statements/lines, 51.61% branches and
 7. The dev cluster is M0 and not a production HA/PITR/backup configuration.
 
 PR #1 remains open and draft, not merge-ready. No merge, deployment, main-branch write, production configuration update, seed execution, migration or modification of `verifymart_v14` was performed.
+
+
+---
+
+## Implementation addendum — 2026-11-16 (feature branch review; not a production sign-off)
+
+The audit above is a historical snapshot of its stated base and date. The following source changes are now committed on `feat/registration-entry-and-role-routing`; they do not change `main`.
+
+- Atlas runtime now has three separately connected runtime principals: app (`MONGODB_URI`), insert-only audit writer (`MONGODB_AUDIT_URI`) and find-only audit reader (`MONGODB_AUDIT_READ_URI`). App collection/index validation covers ten operational collections only; audit reads use the reader and audit appends use the writer. The fourth overall principal is the one-off migration/admin identity (`MONGODB_MIGRATION_URI`; the CLI's `MONGODB_AUDIT_MIGRATION_URI` must be the same identity), not a runtime dependency.
+- The native SQLite binding is now an optional dependency so the Atlas application installation path does not fail when the native module cannot build. Migration tooling remains optional and its tests are skipped when the optional SQLite binding is unavailable.
+- Pakistan landed-cost quotes include illustrative ACD/RD/FED/WHT/platform components and a demo USD/PKR conversion. The response, UI and seed metadata identify them as placeholders, not official customs/FBR or market FX data. The selected origin, destination city and filer profile are retained on checkout orders.
+- Escrow supports `on_hold -> held -> released`; direct `on_hold -> released` remains invalid. Refresh-token rotation consumes the old token and appends the replacement in a single conditional update pipeline. Demo shortcuts require `ENABLE_DEMO_AUTH=true` in development as well as `DEMO_PASSWORD`.
+- Frontend routes and layout shells are split by the five SRS roles. The Emerald token system replaces the legacy Sage/Tomato palette in the main styles and dashboard charts. The header language selector is present, but a complete Urdu translation pack has not yet been implemented.
+- Regression tests were added for escrow transitions and refresh pipeline invariants. Full endpoint, role/ownership, concurrency and browser E2E coverage is still needed.
+
+### Verification status at this addendum
+
+- No real Atlas seed was run by this audit agent; no collection counts are asserted here. The seed script now emits the actual eleven collection counts after successful seeding and counts `auditLog` using the find-only reader. A real run still requires the user's configured dev/staging URIs, pre-provisioned collections and indexes, and network access.
+- CI and coverage for the current feature head have not yet been observed at this addendum. The previous historical CI run recorded 15.02% statement/line, 51.61% branch and 31.70% function coverage; that value is **below the required 80%** and must not be represented as a current measurement.
+- The updated four-principal DOCX is supplied as a companion artifact for this branch. The pre-existing binary copy under `docs/VerifyMart_AI_SRS.docx` remains the older document; use this amendment and companion DOCX as the current §25.1 wording until the binary source document is replaced in a reviewed binary-file update.
+- No production credentials, real customs feeds, actual payments, deployment, migration, or main-branch changes are claimed.
