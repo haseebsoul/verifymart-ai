@@ -1,7 +1,7 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Activity, Boxes, ChartNoAxesCombined, Globe2, LayoutDashboard, LogOut,
-  Menu, Settings, ShieldAlert, ShieldCheck, Users, WalletCards, X
+  Menu, Settings, ShieldAlert, ShieldCheck, WalletCards, X
 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
