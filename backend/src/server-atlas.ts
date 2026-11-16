@@ -98,7 +98,7 @@ subscribeOrderEvents(event => {
     if (!context?.userId) continue;
     const isStaff = context.role === 'operator' || context.role === 'admin';
     const isOwner = context.role === 'shopper' && context.userId === event.ownerUserId;
-    if (isStaff || isOwner) send(socket, event);
+    if (isStaff || isOwner) send(socket, { ...event });
   }
 });
 

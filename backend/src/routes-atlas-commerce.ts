@@ -138,7 +138,7 @@ async function transitionEscrow(orderId: string, actorId: string, nextState: Ord
   const database = getAtlasDb();
   const orders = database.collection<OrderDocument>('orders');
   const session = getAtlasClient().startSession();
-  let changed: OrderDocument | null = null;
+  const resultBox: { changed: OrderDocument | null } = { changed: null };
   let previousState: OrderState | undefined;
   try {
     await session.withTransaction(async () => {
@@ -165,12 +165,13 @@ async function transitionEscrow(orderId: string, actorId: string, nextState: Ord
         } },
         { session, returnDocument: 'after' }
       );
-      changed = result ?? null;
-      if (!changed) throw Object.assign(new Error('Order state changed concurrently.'), { status: 409, code: 'ESCROW_STATE_CONFLICT' });
+      resultBox.changed = result ?? null;
+      if (!resultBox.changed) throw Object.assign(new Error('Order state changed concurrently.'), { status: 409, code: 'ESCROW_STATE_CONFLICT' });
     });
   } finally {
     await session.endSession();
   }
+  const changed = resultBox.changed;
   if (changed && previousState) {
     const action = nextState === 'released' ? 'ESCROW_RELEASED'
       : nextState === 'on_hold' ? 'ESCROW_HELD'
