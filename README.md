@@ -162,14 +162,14 @@ Copy `.env.example` to a local, untracked environment file and supply values the
 
 ```dotenv
 NODE_ENV=development
-PORT=8000
+PORT=5000
 MONGODB_URI=mongodb+srv://<APP_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Dev
 MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit
 MONGODB_DB_NAME=verifymart_dev
 MONGODB_APP_NAME=VerifyMart-Dev
 JWT_ACCESS_SECRET=<RANDOM_SECRET_AT_LEAST_32_CHARACTERS>
 CORS_ORIGIN=http://localhost:5173
-VITE_API_URL=http://localhost:8000/api
+VITE_API_URL=http://localhost:5000/api
 ```
 
 The normal commands use Atlas:
@@ -181,7 +181,7 @@ npm run build
 npm test
 ```
 
-The backend listens on port 8000, Vite on port 5173. `npm start` runs the Atlas server. `npm run seed` is the Atlas development seed. The frontend proxies `/api` and `/ws` to the Atlas backend.
+The backend listens on port 5000, Vite on port 5173. `npm start` runs the Atlas server. `npm run seed` is the Atlas development seed. The frontend proxies `/api` and `/ws` to the Atlas backend.
 
 Legacy SQLite commands are explicitly separated as `npm run dev:sqlite`, `npm run start:sqlite` and `npm run seed:sqlite`. They are compatibility/migration tooling, not the normal application path and must not be used in production.
 
@@ -225,3 +225,12 @@ The catalogue and provenance history created by the seed are explicitly simulate
 
 
 Full manual for Atlas custom roles, separate users, local environment and startup: [docs/WINDOWS_LOCAL_SETUP.md](docs/WINDOWS_LOCAL_SETUP.md).
+
+
+### Five-role registration and demo access
+
+The sign-in and registration forms require an explicit stakeholder role. Shopper registration is open. Merchant registration creates a pending supplier profile in the same Atlas transaction as the user record. Inventory Manager, Operations Auditor and System Administrator registration require role-specific invitations: set `ADMIN_INVITE_KEY` for administrator registration and optionally set `ROLE_INVITE_KEYS` to a JSON object containing `inventory_manager` and/or `operator` keys. Never commit real invitation values.
+
+In a non-production environment, setting `DEMO_PASSWORD` (10+ characters) enables the evaluator panel. The seeded demo shortcut checks the server-side password against the seeded account hash; the password is not sent to or exposed in browser code. The five fixed demo emails are `admin@verifymart.ai`, `merchant@verifymart.ai`, `inventory@verifymart.ai`, `auditor@verifymart.ai` and `shopper@verifymart.ai`.
+
+The Atlas API defaults to port 5000 and Vite to 5173. Vite uses `strictPort` and proxies `/api` and `/ws` to port 5000. `/api/health` checks the Atlas application and audit connections; `/api/public/metrics` returns aggregate public record counts and in-process p95 API latency. The landed-cost engine currently supports the seeded product value, destination duty, VAT and carrier fee in USD. City-level, filer-specific, additional customs, regulatory, excise, withholding, platform fees and a live USD/PKR conversion are not yet configured and are not fabricated by the UI.
