@@ -207,3 +207,61 @@ The audit above is a historical snapshot of its stated base and date. The follow
 - CI and coverage for the current feature head have not yet been observed at this addendum. The previous historical CI run recorded 15.02% statement/line, 51.61% branch and 31.70% function coverage; that value is **below the required 80%** and must not be represented as a current measurement.
 - The updated four-principal DOCX is supplied as a companion artifact for this branch. The pre-existing binary copy under `docs/VerifyMart_AI_SRS.docx` remains the older document; use this amendment and companion DOCX as the current §25.1 wording until the binary source document is replaced in a reviewed binary-file update.
 - No production credentials, real customs feeds, actual payments, deployment, migration, or main-branch changes are claimed.
+
+
+---
+
+## Verified implementation checkpoint — 2026-11-16
+
+This checkpoint supersedes the earlier “CI not yet observed” status above. It records the exact evidence obtained after the merge into the existing PR branch.
+
+### Repository and PR state
+
+- Working branch `feat/registration-entry-and-role-routing` and existing PR #1 head branch `feat/atlas-five-role-migration` were fast-forwarded through a merge commit so both refs contain the same reviewed history. Both point to `28cf3b06f98569076556e8745a38d1ecd00c0659` at this checkpoint.
+- PR #1 remains **open and draft**, targeting `main`. No merge or write to `main` occurred.
+
+### CI evidence
+
+GitHub Actions run **43975181870** (run 174) completed successfully on `28cf3b06f98569076556e8745a38d1ecd00c0659`:
+- npm install — passed
+- shared/backend/frontend typecheck — passed
+- build — passed
+- backend tests — **9 test files, 28 tests passed**
+- ESLint — passed
+- Emerald palette lint — passed
+
+Coverage from that exact run:
+- Statements: **15.85%**
+- Lines: **15.85%**
+- Branches: **53.72%**
+- Functions: **32.63%**
+
+The 80% coverage target is **not met**. The passing CI status must not be presented as proof of 80% coverage or complete SRS acceptance.
+
+### Live Atlas verification — pre-seed, not post-seed
+
+A read-only inspection of project **VerifyMart AI**, cluster **VerifyMartCluster**, database `verifymart_dev`, confirmed the 11 expected collections and these actual document counts:
+
+| Collection | Documents |
+|---|---:|
+| users | 0 |
+| merchants | 0 |
+| products | 0 |
+| hubs | 5 |
+| tariffRules | 78 |
+| orders | 0 |
+| threats | 0 |
+| inventoryAdjustments | 0 |
+| auditLog | 0 |
+| settings | 3 |
+| trustLedger | 0 |
+
+Atlas currently lists only the legacy `verifymart_app` database user scoped to `verifymart_v14`; the dedicated development app, audit-writer and audit-reader principals are not provisioned. **No seed was run**, so the table above is a genuine live pre-seed snapshot and must not be described as post-seed output. The legacy principal was not reused or broadened. Post-seed counts remain blocked on the three dedicated `verifymart_dev` URIs being configured locally.
+
+### Specification status
+
+- The approved four-principal wording is committed in `docs/SRS_SECTION_25_1_FOUR_PRINCIPAL_AMENDMENT.md`.
+- An updated full Word SRS copy with Section 25.1 and the related audit credential references corrected is saved in the owner's Library as `VerifyMart AI SRS Updated.docx`.
+- The tracked `docs/VerifyMart_AI_SRS.docx` binary has **not** been replaced in this commit; the Markdown amendment is the repository's normative Section 25.1 update until that binary replacement is handled in a reviewed file update.
+
+This checkpoint is not a pilot or production sign-off. Real Atlas seed verification, the 80% core-service coverage target, authenticated five-role E2E journeys, and production hosting/backup/disclosure decisions remain outstanding.
