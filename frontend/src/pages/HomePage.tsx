@@ -137,6 +137,9 @@ function CostCalculator({ products }: { products: Product[] }) {
         method: 'POST',
         body: JSON.stringify({
           destinationCountry: 'PK' satisfies Destination,
+          originCountry: origin,
+          destinationCity: city,
+          taxProfile: filer,
           items: [{ productId: selectedProduct.id, quantity }]
         })
       });
@@ -148,17 +151,17 @@ function CostCalculator({ products }: { products: Product[] }) {
     }
   };
 
-  const rows: Array<[string, number | null]> = [
-    ['Assessed item value', quote?.subtotal ?? null],
-    ['Customs duty', quote?.duty ?? null],
-    ['Additional customs duty', null],
-    ['Regulatory duty', null],
-    ['Federal excise duty', null],
-    ['Sales tax / VAT', quote?.vat ?? null],
-    ['Income tax withholding', null],
-    ['Carrier fee', quote?.carrierFee ?? null],
-    ['Platform fee', null]
-  ];
+  const rows: Array<[string, number | null, number | null, string]> = quote?.pakistanDemo
+    ? quote.pakistanDemo.components.map(component => [
+        component.label, component.amountUsd, component.amountPkr,
+        component.basis === 'demo-placeholder' ? 'DEMO PLACEHOLDER' : 'ATLAS SEED ESTIMATE'
+      ])
+    : [
+        ['Assessed item value', quote?.subtotal ?? null, null, ''],
+        ['Customs duty', quote?.duty ?? null, null, ''],
+        ['Sales tax / VAT', quote?.vat ?? null, null, ''],
+        ['Carrier fee', quote?.carrierFee ?? null, null, '']
+      ];
 
   return (
     <div className="cost-calculator-card">
@@ -208,19 +211,21 @@ function CostCalculator({ products }: { products: Product[] }) {
       </form>
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="cost-breakdown">
-        {rows.map(([label, value]) => (
-          <div className={value === null ? 'cost-row is-unconfigured' : 'cost-row'} key={label}>
-            <span>{label}</span><b>{value === null ? 'Not configured' : usd(value)}</b>
+        {rows.map(([label, valueUsd, valuePkr, source]) => (
+          <div className={valueUsd === null ? 'cost-row is-unconfigured' : 'cost-row'} key={label}>
+            <span>{label}<small className="cost-source-label">{source}</small></span>
+            <b>{valueUsd === null ? 'Not configured' : usd(valueUsd)}{valuePkr !== null && <small>{new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(valuePkr)}</small>}</b>
           </div>
         ))}
         <div className="cost-row cost-total">
-          <span>Total landed cost</span><b>{quote ? usd(quote.total) : '—'}</b>
+          <span>Total landed cost {quote?.pakistanDemo && <small>DEMO ONLY · {quote.pakistanDemo.exchangeRatePkrPerUsd} PKR per USD</small>}</span>
+          <b>{quote ? usd(quote.total) : '—'}{quote?.pakistanDemo && <small>{new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(quote.pakistanDemo.totalPkr)}</small>}</b>
         </div>
       </div>
       <p className="cost-disclaimer">
         Selected context: origin {origin} · destination {city} · {filer === 'filer' ? 'Filer' : 'Non-filer'}.
-        This Atlas tariff version currently models catalog value, destination duty, VAT and carrier fees only; the origin, city and filer selections do not change the API quote yet.
-        Unconfigured charges are not guessed, and a sourced USD/PKR rate is not currently connected.
+        The additional customs duty, regulatory duty, federal excise duty, withholding and platform-fee values are visibly marked demo placeholders. The USD/PKR conversion is also a fixed demo placeholder, not a live market rate or official assessment.
+        {quote?.pakistanDemo && <strong className="demo-placeholder-disclosure">{quote.pakistanDemo.disclosure}</strong>}
       </p>
     </div>
   );

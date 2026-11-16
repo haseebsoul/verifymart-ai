@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from './middleware/http.js';
-import { calculateAtlasDuty } from './services/duty-atlas.js';
+import { calculateAtlasDuty, calculatePakistanDemoEstimate } from './services/duty-atlas.js';
 import { verifyAtlasQuery } from './services/verification-atlas.js';
 import { getAtlasDb } from './infrastructure/atlas.js';
 import { MongoProductRepository } from './repositories/products.js';
@@ -13,7 +13,10 @@ const dutySchema = z.object({
   items: z.array(z.object({
     productId: z.string().min(1).max(100),
     quantity: z.number().int().min(1).max(100)
-  })).min(1).max(50)
+  })).min(1).max(50),
+  originCountry: z.string().trim().min(2).max(50).optional(),
+  destinationCity: z.string().trim().min(2).max(80).optional(),
+  taxProfile: z.enum(['filer','non-filer']).optional()
 });
 
 atlasPublicRouter.get('/products', asyncHandler(async (req, res) => {
@@ -93,6 +96,14 @@ atlasPublicRouter.get('/verify/:query', asyncHandler(async (req, res) => {
 
 atlasPublicRouter.post('/duty/calculate', asyncHandler(async (req, res) => {
   const input = dutySchema.parse(req.body);
-  const quote = await calculateAtlasDuty(input.destinationCountry, input.items);
-  res.json(quote);
+  if (input.destinationCountry === 'PK') {
+    const quote = await calculatePakistanDemoEstimate(input.items, {
+      originCountry: input.originCountry ?? 'Not specified',
+      destinationCity: input.destinationCity ?? 'Not specified',
+      taxProfile: input.taxProfile ?? 'filer'
+    });
+    res.json(quote);
+    return;
+  }
+  res.json(await calculateAtlasDuty(input.destinationCountry, input.items));
 }));

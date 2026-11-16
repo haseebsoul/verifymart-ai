@@ -44,7 +44,17 @@ export interface Product {
   status: 'verified' | 'low_stock' | 'audit_flag';
 }
 export interface DutyLine { productId: string; sku: string; hsCode: string; quantity: number; value: number; duty: number; vat: number; carrierFee: number }
-export interface DutyQuote { destinationCountry: Destination; currency: 'USD'; lines: DutyLine[]; subtotal: number; duty: number; vat: number; carrierFee: number; total: number; source: 'seed-tariff-v1'; formulaVersion: 'landed-cost-v1'; computedAt: string }
+export interface PakistanDemoComponent { key: string; label: string; amountUsd: number; amountPkr: number; basis: 'atlas-seed-tariff' | 'demo-placeholder' }
+export interface PakistanDemoEstimate {
+  simulated: true; disclosure: string; originCountry: string; destinationCity: string; taxProfile: 'filer' | 'non-filer';
+  exchangeRatePkrPerUsd: number; exchangeRateSource: 'demo-placeholder'; components: PakistanDemoComponent[];
+  totalUsd: number; totalPkr: number; assumptions: Record<string, number>;
+}
+export interface DutyQuote {
+  destinationCountry: Destination; currency: 'USD'; lines: DutyLine[]; subtotal: number; duty: number;
+  vat: number; carrierFee: number; total: number; source: 'seed-tariff-v1'; formulaVersion: 'landed-cost-v1';
+  computedAt: string; pakistanDemo?: PakistanDemoEstimate;
+}
 export interface ProvenanceEvent { id: string; stage: string; hubId: string; occurredAt: string; hash: string }
 export interface VerifyResult { query: string; product: Product; authenticityScore: number; certificate: { factory: string; batchHash: string; hsCode: string; issuedAt: string }; timeline: ProvenanceEvent[]; simulated: true }
 export interface ApiError { error: { code: string; message: string; requestId: string } }
