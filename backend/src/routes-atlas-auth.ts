@@ -16,7 +16,7 @@ import { appendAuditEvent } from './repositories/audit.js';
 export const atlasAuthRouter = Router();
 
 atlasAuthRouter.get('/auth/mode', (_req, res) => {
-  const demoMode = process.env.NODE_ENV === 'development' && Boolean(process.env.DEMO_PASSWORD);
+  const demoMode = process.env.NODE_ENV === 'development' && process.env.ENABLE_DEMO_AUTH === 'true' && Boolean(process.env.DEMO_PASSWORD);
   res.json({ demoMode });
 });
 const cookieName = 'verifymart_refresh';
@@ -90,6 +90,24 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+export function buildRefreshRotationPipeline(tokenHash: string, replacement: { tokenHash: string; createdAt: Date; expiresAt: Date }) {
+  return [{
+    $set: {
+      refreshSessions: {
+        $slice: [{
+          $concatArrays: [{
+            $filter: {
+              input: { $ifNull: ['$refreshSessions', []] },
+              as: 'session',
+              cond: { $ne: ['$session.tokenHash', tokenHash] }
+            }
+          }, [replacement]]
+        }, -20]
+      }
+    }
+  }];
+}
+
 function safeUser(user: UserDocument) {
   return {
     id: user._id,
@@ -135,9 +153,12 @@ async function newRefreshSession(userId: string, res: Response, userCollection: 
     ({
       $push: {
         refreshSessions: {
-          tokenHash: hashToken(token),
-          createdAt: now,
-          expiresAt: new Date(now.getTime() + sevenDaysMs)
+          $each: [{
+            tokenHash: hashToken(token),
+            createdAt: now,
+            expiresAt: new Date(now.getTime() + sevenDaysMs)
+          }],
+          $slice: -20
         }
       }
     } as unknown as UpdateFilter<UserDocument>));
@@ -286,7 +307,7 @@ const demoAccounts: Record<Role, string> = {
  * when the server has an explicit demo password and is not running in production.
  */
 atlasAuthRouter.post('/auth/demo-login', loginLimiter, asyncHandler(async (req, res) => {
-  if (process.env.NODE_ENV !== 'development' || !process.env.DEMO_PASSWORD) {
+  if (process.env.NODE_ENV !== 'development' || process.env.ENABLE_DEMO_AUTH !== 'true' || !process.env.DEMO_PASSWORD) {
     res.status(404).json({ error: { code: 'DEMO_ACCESS_DISABLED', message: 'Quick demo access is disabled.', requestId: req.requestId } });
     return;
   }
@@ -342,11 +363,22 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
     return;
   }
 
-  // Remove the one-time token first, then issue its replacement. This avoids
-  // overlapping $pull/$push modifiers on the same MongoDB array path.
+  const now = new Date();
+  const replacementToken = randomBytes(48).toString('base64url');
+  const replacement = {
+    tokenHash: hashToken(replacementToken),
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + sevenDaysMs)
+  };
+  // One conditional pipeline update consumes the old token and appends its
+  // replacement atomically. Concurrent refresh requests cannot both succeed.
   const rotated = await users.updateOne(
-    { _id: user._id, 'refreshSessions.tokenHash': tokenHash, $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }] },
-    { $pull: { refreshSessions: { tokenHash } } } as unknown as UpdateFilter<UserDocument>
+    {
+      _id: user._id,
+      refreshSessions: { $elemMatch: { tokenHash, expiresAt: { $gt: now } } },
+      $or: [{ disabledAt: null }, { disabledAt: { $exists: false } }]
+    },
+    buildRefreshRotationPipeline(tokenHash, replacement)
   );
   if (rotated.modifiedCount !== 1) {
     res.clearCookie(cookieName, cookieOptions());
@@ -354,7 +386,7 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
     return;
   }
 
-  await newRefreshSession(user._id, res, users);
+  res.cookie(cookieName, replacementToken, cookieOptions());
   res.json({ user: safeUser(user), accessToken: issueAccessToken(user) });
 }));
 

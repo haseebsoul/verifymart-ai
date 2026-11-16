@@ -94,12 +94,14 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
   const receiptId = input.holdReceiptId ?? ('esc_' + randomUUID().replaceAll('-', '').slice(0, 18));
   const now = new Date();
   let created: OrderDocument | undefined;
+  let transactionReplayed = false;
 
   try {
     await session.withTransaction(async () => {
       const inTransactionReplay = await replay(session);
       if (inTransactionReplay) {
         created = inTransactionReplay.order;
+        transactionReplayed = true;
         return;
       }
 
@@ -222,5 +224,5 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
   }
 
   if (!created) throw new Error('Checkout transaction completed without creating or replaying an order.');
-  return { order: created, idempotencyReplayed: false };
+  return { order: created, idempotencyReplayed: transactionReplayed };
 }

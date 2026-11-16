@@ -126,7 +126,7 @@ atlasCommerceRouter.get(
 async function transitionEscrow(
   orderId: string,
   actorId: string,
-  nextState: 'released' | 'on_hold' | 'refunded',
+  nextState: 'held' | 'released' | 'on_hold' | 'refunded',
   reason?: string
 ): Promise<OrderDocument | null> {
   const database = getAtlasDb();
@@ -138,13 +138,14 @@ async function transitionEscrow(
     await session.withTransaction(async () => {
       const current = await orders.findOne({ _id: orderId }, { session });
       if (!current) return;
-      if (current.state !== 'held') {
-        throw Object.assign(new Error('Only held escrow can transition to ' + nextState + '.'), {
+      const expectedState = nextState === 'held' ? 'on_hold' : 'held';
+      if (current.state !== expectedState) {
+        throw Object.assign(new Error('Escrow must be ' + expectedState + ' before transition to ' + nextState + '.'), {
           status: 409, code: 'INVALID_ESCROW_STATE'
         });
       }
       const result = await orders.findOneAndUpdate(
-        { _id: orderId, state: 'held' },
+        { _id: orderId, state: expectedState },
         {
           $set: {
             state: nextState,
@@ -165,7 +166,7 @@ async function transitionEscrow(
   if (changed) {
     await appendAuditEvent({
       actorId,
-      action: nextState === 'released' ? 'ESCROW_RELEASED' : nextState === 'on_hold' ? 'ESCROW_HELD' : 'ESCROW_REFUNDED',
+      action: nextState === 'released' ? 'ESCROW_RELEASED' : nextState === 'on_hold' ? 'ESCROW_HELD' : nextState === 'held' ? 'ESCROW_REINSTATED' : 'ESCROW_REFUNDED',
       targetType: 'order',
       targetId: orderId,
       details: { state: nextState, reason: reason ?? null, simulated: true }
@@ -194,6 +195,19 @@ atlasCommerceRouter.post('/orders/:id/hold', authenticateAtlas,
     const order = await transitionEscrow(id, req.atlasPrincipal!.id, 'on_hold', input.reason);
     if (!order) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
     res.json({ orderId: order._id, state: order.state, reason: input.reason, simulated: true });
+  })
+);
+
+atlasCommerceRouter.post('/orders/:id/reinstate', authenticateAtlas,
+  requireAtlasRoleAndOwnership(['operator','admin']),
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    if (!id) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
+    const input = z.object({ reason: z.string().trim().min(4).max(500) }).strict().parse(req.body);
+    const order = await transitionEscrow(id, req.atlasPrincipal!.id, 'held', input.reason);
+    if (!order) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
+    res.json({ orderId: order._id, state: order.state, reason: input.reason, simulated: true,
+      notice: 'Escrow returned to held review; release remains a separate Operator/Admin action.' });
   })
 );
 
