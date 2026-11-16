@@ -13,6 +13,7 @@ export function Header(){
     <div className="header-actions">
       <button className="icon-button cart-trigger" onClick={()=>setOpen(true)} aria-label={`Open cart, ${count} items`}><ShoppingBag size={18}/><span>Cart</span>{count>0&&<b>{count}</b>}</button>
       <Link className="button button-small button-outline header-signin" to="/login">Sign in</Link>
+      <Link className="button button-small button-primary header-register" to="/register">Create account</Link>
       <Link className="button button-small header-ops" to="/dashboard">Ops console <ArrowUpRight size={15}/></Link>
       <button className="mobile-menu" onClick={()=>setMobile(v=>!v)} aria-label={mobile?'Close menu':'Open menu'}>{mobile?<X/>:<Menu/>}</button>
     </div>
