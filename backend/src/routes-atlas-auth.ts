@@ -37,7 +37,7 @@ const registerSchema = z.object({
   password: z.string().min(10).max(128),
   role: z.enum(stakeholderRoles).default('shopper'),
   businessName: z.string().trim().min(2).max(120).optional(),
-  country: z.enum(['US', 'UK', 'EU', 'AE', 'PK', 'SG']).optional(),
+  country: z.enum(['US', 'UK', 'EU', 'AE', 'PK', 'SG', 'CN', 'TR']).optional(),
   inviteKey: z.string().max(256).optional()
 }).strict().superRefine((value, context) => {
   if (value.role === 'merchant' && (!value.businessName || !value.country)) {
