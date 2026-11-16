@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRefreshRotationPipeline } from '../src/routes-atlas-auth.js';
+import { buildRefreshRotationPipeline } from '../src/services/refresh-rotation.js';
 
 describe('refresh-token rotation invariants', () => {
   it('removes only the consumed token and appends one replacement in one bounded pipeline update', () => {
