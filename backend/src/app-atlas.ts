@@ -140,7 +140,7 @@ app.get('/api/public/metrics', asyncHandler(async (_req, res) => {
       requests: requestCount,
       errors: errorCount
     },
-    database: { products, signedBatchRecords, registeredSuppliers, orderRecords }
+    database: { products, batchProvenanceRecords, registeredSuppliers, orderRecords }
   });
 }));
 
