@@ -110,6 +110,12 @@ export interface OrderDocument extends Document {
     federalExciseDutyCents?: Long;
     incomeTaxWithholdingCents?: Long;
     platformFeeCents?: Long;
+    totalPkrMinor?: Long;
+    usdToPkrRate?: number;
+    originCountry?: string;
+    destinationCity?: string;
+    taxProfile?: 'filer' | 'non-filer';
+    demoPlaceholders?: boolean;
     totalCents: Long;
     source: 'seed-tariff-v1' | 'demo-placeholder-tariff-v1';
     formulaVersion: 'landed-cost-v1' | 'landed-cost-demo-v2';

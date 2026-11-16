@@ -3,7 +3,7 @@ import {
   Activity, Boxes, ChartNoAxesCombined, Globe2, LayoutDashboard, LogOut,
   Menu, Settings, ShieldAlert, ShieldCheck, Users, WalletCards, X
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getAccessToken } from '../lib/api';
 
@@ -69,7 +69,7 @@ function useWorkspaceSocket(userId:string|undefined, setStatus:(status:'connecti
   },[userId,setStatus]);
 }
 
-function WorkspaceFrame({role,title,navigation,children}:{role:WorkspaceRole;title:string;navigation:NavItem[];children?:React.ReactNode}) {
+function WorkspaceFrame({role,title,navigation,children}:{role:WorkspaceRole;title:string;navigation:NavItem[];children?:ReactNode}) {
   const {user,logout}=useAuth();const navigate=useNavigate();const location=useLocation();
   const [socketStatus,setSocketStatus]=useState<'connecting'|'connected'|'reconnecting'>('connecting');
   const [collapsed,setCollapsed]=useState(false);const [mobile,setMobile]=useState(false);

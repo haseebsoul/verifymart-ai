@@ -20,6 +20,12 @@ export interface CheckoutQuoteCents {
   platformFeeCents?: number;
   source?: 'seed-tariff-v1' | 'demo-placeholder-tariff-v1';
   formulaVersion?: 'landed-cost-v1' | 'landed-cost-demo-v2';
+  totalPkrMinor?: number;
+  usdToPkrRate?: number;
+  originCountry?: string;
+  destinationCity?: string;
+  taxProfile?: 'filer' | 'non-filer';
+  demoPlaceholders?: boolean;
   totalCents: number;
 }
 
@@ -195,7 +201,13 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
         platformFeeCents: asLong(input.quote.platformFeeCents ?? 0),
         totalCents: asLong(input.quote.totalCents),
         source: input.quote.source ?? 'seed-tariff-v1',
-        formulaVersion: input.quote.formulaVersion ?? 'landed-cost-v1'
+        formulaVersion: input.quote.formulaVersion ?? 'landed-cost-v1',
+        ...(input.quote.totalPkrMinor !== undefined ? { totalPkrMinor: asLong(input.quote.totalPkrMinor) } : {}),
+        ...(input.quote.usdToPkrRate !== undefined ? { usdToPkrRate: input.quote.usdToPkrRate } : {}),
+        ...(input.quote.originCountry !== undefined ? { originCountry: input.quote.originCountry } : {}),
+        ...(input.quote.destinationCity !== undefined ? { destinationCity: input.quote.destinationCity } : {}),
+        ...(input.quote.taxProfile !== undefined ? { taxProfile: input.quote.taxProfile } : {}),
+        ...(input.quote.demoPlaceholders !== undefined ? { demoPlaceholders: input.quote.demoPlaceholders } : {})
       };
       const order: OrderDocument = {
         _id: orderId,

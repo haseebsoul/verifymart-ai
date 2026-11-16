@@ -99,7 +99,7 @@ export function buildRefreshRotationPipeline(tokenHash: string, replacement: { t
             $filter: {
               input: { $ifNull: ['$refreshSessions', []] },
               as: 'session',
-              cond: { $ne: ['$session.tokenHash', tokenHash] }
+              cond: { $ne: ['$$session.tokenHash', tokenHash] }
             }
           }, [replacement]]
         }, -20]

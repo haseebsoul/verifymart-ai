@@ -16,7 +16,10 @@ const checkoutSchema = z.object({
   items: z.array(z.object({
     productId: z.string().min(1).max(100),
     quantity: z.number().int().min(1).max(100)
-  })).min(1).max(50)
+  })).min(1).max(50),
+  originCountry: z.string().trim().min(2).max(80).optional(),
+  destinationCity: z.string().trim().min(2).max(80).optional(),
+  taxProfile: z.enum(['filer','non-filer']).default('filer')
 }).strict();
 
 const checkoutLimiter = rateLimit({
@@ -39,7 +42,7 @@ atlasCommerceRouter.post(
       return;
     }
     const input = checkoutSchema.parse(req.body);
-    const quote = await calculateAtlasDuty(input.destinationCountry, input.items);
+    const quote = await calculateAtlasDuty(input.destinationCountry, input.items, input);
     const result = await createMongoCheckout({
       idempotencyKey: key,
       userId: req.atlasPrincipal!.id,
@@ -57,7 +60,13 @@ atlasCommerceRouter.post(
         platformFeeCents: Math.round(quote.platformFee * 100),
         totalCents: Math.round(quote.total * 100),
         source: quote.source,
-        formulaVersion: quote.formulaVersion
+        formulaVersion: quote.formulaVersion,
+        totalPkrMinor: quote.totalPkr === null ? undefined : Math.round(quote.totalPkr * 100),
+        usdToPkrRate: quote.usdToPkrRate ?? undefined,
+        originCountry: quote.originCountry ?? undefined,
+        destinationCity: quote.destinationCity ?? undefined,
+        taxProfile: quote.taxProfile,
+        demoPlaceholders: quote.demoPlaceholders
       }
     });
     const response = {
@@ -65,6 +74,9 @@ atlasCommerceRouter.post(
       escrowReceiptId: result.order.escrow.receiptId,
       state: result.order.state,
       total: result.order.quote.totalCents.toNumber() / 100,
+      totalPkr: result.order.quote.totalPkrMinor ? result.order.quote.totalPkrMinor.toNumber() / 100 : null,
+      usdToPkrRate: result.order.quote.usdToPkrRate ?? null,
+      demoPlaceholders: result.order.quote.demoPlaceholders ?? false,
       idempotencyReplayed: result.idempotencyReplayed,
       simulated: true,
       notice: 'Escrow is a simulated state only. No payment or funds transfer occurred.'
@@ -110,7 +122,16 @@ atlasCommerceRouter.get(
           duty: order.quote.dutyCents.toNumber() / 100,
           vat: order.quote.vatCents.toNumber() / 100,
           carrierFee: order.quote.carrierFeeCents.toNumber() / 100,
+          additionalCustomsDuty: order.quote.additionalCustomsDutyCents?.toNumber() / 100 ?? 0,
+          regulatoryDuty: order.quote.regulatoryDutyCents?.toNumber() / 100 ?? 0,
+          federalExciseDuty: order.quote.federalExciseDutyCents?.toNumber() / 100 ?? 0,
+          incomeTaxWithholding: order.quote.incomeTaxWithholdingCents?.toNumber() / 100 ?? 0,
+          platformFee: order.quote.platformFeeCents?.toNumber() / 100 ?? 0,
           total: order.quote.totalCents.toNumber() / 100,
+          totalPkr: order.quote.totalPkrMinor?.toNumber() / 100 ?? null,
+          usdToPkrRate: order.quote.usdToPkrRate ?? null,
+          taxProfile: order.quote.taxProfile ?? null,
+          demoPlaceholders: order.quote.demoPlaceholders ?? false,
           state: order.state,
           holdReason: order.escrow.holdReason,
           createdAt: order.createdAt,
