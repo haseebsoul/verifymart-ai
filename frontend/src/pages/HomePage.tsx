@@ -95,6 +95,7 @@ function VerificationCard() {
           <div className="verification-result" role="status">
             <div><BadgeCheck size={18} /><strong>{result.product?.name ?? 'Verification record'}</strong></div>
             <span>{result.authenticityScore ?? result.product?.authenticityScore ?? '—'}/100 · {result.timeline?.length ?? 0} recorded checkpoints</span>
+            <small>{result.authenticityNote}</small>
             <Link to={`/verify?query=${encodeURIComponent(result.query)}`}>Open full verification record</Link>
           </div>
         )}
