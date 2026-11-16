@@ -913,8 +913,8 @@ h1 em, h2 em, h3 em { font-weight: 400; }
 
 /* VerifyMart editorial design system: emerald, parchment and white surfaces. */
 /* Typography and role-specific workspace styling use the global §24 token set. */
-html, body { background: var(--bg-surface); color: var(--ink-secondary); }
-body { font-family: 'DM Sans', system-ui, sans-serif; font-weight: 400; }
+html { background: var(--bg-canvas); }
+body { background: var(--bg-canvas); color: var(--ink-secondary); font-family: 'DM Sans', system-ui, sans-serif; font-weight: 400; }
 h1, h2, h3, .display { color: var(--ink-primary); font-family: 'Instrument Serif', Georgia, serif; font-weight: 500; font-style: normal; }
 h1 em, h2 em, h3 em { color: var(--brand-emerald); font-style: normal; }
 .eyebrow, .terminal-sub, .certificate-label, .record-hash-label, .reliability-label {
