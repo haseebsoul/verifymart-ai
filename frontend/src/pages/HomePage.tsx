@@ -400,7 +400,7 @@ export function HomePage() {
           </div>
           <div className="reliability-foot">
             <span><Clock3 size={15} /> Refreshes automatically</span>
-            <span><Boxes size={15} /> {metrics ? metrics.database.orderRecords.toLocaleString() : '—'} order records</span>
+            <span><Boxes size={15} /> {metrics ? metrics.orderRecords.toLocaleString() : '—'} order records</span>
             <Link to="/api/health" target="_blank">Open health endpoint <ArrowRight size={14} /></Link>
           </div>
           {(healthQuery.isError || metricsQuery.isError) && <p className="inline-status-error">A live telemetry request failed. Values are left blank rather than replaced with sample data.</p>}

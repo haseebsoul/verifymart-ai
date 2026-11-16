@@ -16,7 +16,8 @@ export function EscrowOrdersPage() {
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState('');
   const act = async (order: OrderRow, action: 'release'|'hold'|'restore'|'refund') => {
-    if ((action === 'hold' || action === 'restore' || action === 'refund') && (reasons[order.id]?.trim().length ?? 0) < 4) {
+    const reason = reasons[order.id]?.trim() ?? '';
+    if ((action === 'hold' || action === 'restore' || action === 'refund') && reason.length < 4) {
       setFeedback('Enter a reason of at least four characters for this transition.');
       return;
     }
@@ -25,7 +26,7 @@ export function EscrowOrdersPage() {
       await api(`/orders/${order.id}/${action}`, {
         method: 'POST',
         ...(action === 'hold' || action === 'restore' || action === 'refund'
-          ? { body: JSON.stringify({reason: reasons[order.id].trim()}) } : {})
+          ? { body: JSON.stringify({ reason }) } : {})
       });
       setFeedback(`Order ${order.id} moved to the requested state.`);
       await queryClient.invalidateQueries({ queryKey: ['escrow-orders'] });

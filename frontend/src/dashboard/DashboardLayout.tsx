@@ -12,7 +12,7 @@ type NavigationItem = { to: string; label: string; icon: typeof LayoutDashboard;
 
 function NavItems({ items, collapsed, onNavigate }: { items: NavigationItem[]; collapsed: boolean; onNavigate: () => void }) {
   return <>{items.map(item => (
-    <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} title={collapsed ? item.label : undefined}>
+    <NavLink key={item.to} to={item.to} {...(item.end === undefined ? {} : { end: item.end })} onClick={onNavigate} {...(collapsed ? { title: item.label } : {})}>
       <item.icon size={18} /><span>{item.label}</span>
     </NavLink>
   ))}</>;
