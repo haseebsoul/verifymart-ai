@@ -9,7 +9,7 @@ const shopperNav=[
   {to:'/dashboard/account',label:'Account',icon:Boxes}
 ];
 const operationsNav=[
-  {to:'/dashboard',label:'Overview',icon:LayoutDashboard,end:true},
+  {to:'/dashboard',label:'Operations overview',icon:LayoutDashboard,end:true},
   {to:'/dashboard/topology',label:'Network topology',icon:Globe2},
   {to:'/dashboard/threats',label:'Threats & stock',icon:ShieldAlert},
   {to:'/dashboard/activity',label:'Activity',icon:Activity},
@@ -19,7 +19,7 @@ const operationsNav=[
   {to:'/dashboard/account',label:'Account',icon:Boxes}
 ];
 const inventoryNav=[
-  {to:'/dashboard',label:'Inventory',icon:LayoutDashboard,end:true},
+  {to:'/dashboard',label:'Inventory workspace',icon:LayoutDashboard,end:true},
   {to:'/dashboard/topology',label:'Network topology',icon:Globe2},
   {to:'/dashboard/threats',label:'Threat visibility',icon:ShieldAlert},
   {to:'/dashboard/account',label:'Account',icon:Boxes}
@@ -56,6 +56,7 @@ export function DashboardLayout(){
   },[user?.id]);
 
   if(!user)return null;
+  const workspaceLabel=role==='merchant'?'Merchant workspace':role==='inventory_manager'?'Inventory workspace':role==='admin'?'Admin workspace':role==='operator'?'Operations workspace':'Shopper workspace';
   return <div className={`dashboard-shell ${collapsed?'sidebar-collapsed':''}`}>
     <aside className={`dashboard-sidebar ${mobile?'mobile-open':''}`}>
       <div className="dashboard-brand"><span className="brand-mark"><ShieldCheck size={20}/></span>{!collapsed&&<span>VerifyMart <i>AI</i></span>}<button className="sidebar-close" onClick={()=>setMobile(false)} aria-label="Close navigation"><X size={17}/></button></div>
@@ -69,7 +70,7 @@ export function DashboardLayout(){
     <div className="dashboard-main">
       <header className="dashboard-topbar"><button className="dashboard-mobile-menu" onClick={()=>setMobile(true)} aria-label="Open navigation"><Menu/></button><button className="collapse-sidebar" onClick={()=>setCollapsed(v=>!v)} aria-label="Toggle sidebar">{collapsed?'»':'«'}</button><div className="breadcrumb"><span>Workspace</span><b>/</b><strong>{nav.find(n=>location.pathname===n.to)?.label??(location.pathname.includes('admin')?'User management':'Workspace')}</strong></div><div className="topbar-actions"><span className={`live-pill ${socketStatus==='connected'?'is-live':''}`} role="status"><i/> {socketStatus==='connected'?'Connected':socketStatus==='connecting'?'Connecting':'Reconnecting'}</span><span className="topbar-avatar">{user.name.slice(0,1).toUpperCase()}</span></div></header>
       <div className="dashboard-content"><Outlet/></div>
-      <footer className="dashboard-footer"><span>VerifyMart AI · {role==='merchant'?'Merchant workspace':role==='inventory_manager'?'Inventory workspace':'Operations console'}</span><span>Prototype data · No real funds or customs declarations</span><a href="/api/health" target="_blank" rel="noreferrer">API status ↗</a></footer>
+      <footer className="dashboard-footer"><span>VerifyMart AI · {workspaceLabel}</span><span>Prototype data · No real funds or customs declarations</span><a href="/api/health" target="_blank" rel="noreferrer">API status ↗</a></footer>
     </div>
     {mobile&&<button className="mobile-sidebar-backdrop" onClick={()=>setMobile(false)} aria-label="Close sidebar"/>}
   </div>;
