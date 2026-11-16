@@ -43,8 +43,23 @@ export interface Product {
   originHubId: string; authenticityScore: number; slaHours: number; imageUrl: string;
   status: 'verified' | 'low_stock' | 'audit_flag';
 }
-export interface DutyLine { productId: string; sku: string; hsCode: string; quantity: number; value: number; duty: number; vat: number; carrierFee: number }
-export interface DutyQuote { destinationCountry: Destination; currency: 'USD'; lines: DutyLine[]; subtotal: number; duty: number; vat: number; carrierFee: number; total: number; source: 'seed-tariff-v1'; formulaVersion: 'landed-cost-v1'; computedAt: string }
+export interface DutyLine {
+  productId: string; sku: string; hsCode: string; quantity: number;
+  value: number; duty: number; additionalCustomsDuty: number; regulatoryDuty: number;
+  federalExciseDuty: number; vat: number; incomeTaxWithholding: number;
+  carrierFee: number; platformFee: number;
+}
+export interface DutyQuote {
+  destinationCountry: Destination; currency: 'USD'; lines: DutyLine[];
+  subtotal: number; duty: number; additionalCustomsDuty: number; regulatoryDuty: number;
+  federalExciseDuty: number; vat: number; incomeTaxWithholding: number;
+  carrierFee: number; platformFee: number; total: number;
+  totalPkr: number | null; usdToPkrRate: number | null;
+  originCountry: string | null; destinationCity: string | null; taxProfile: 'filer' | 'non-filer';
+  demoPlaceholders: boolean; placeholderNotice: string;
+  source: 'seed-tariff-v1' | 'demo-placeholder-tariff-v1';
+  formulaVersion: 'landed-cost-v1' | 'landed-cost-demo-v2'; computedAt: string;
+}
 export interface ProvenanceEvent { id: string; stage: string; hubId: string; occurredAt: string; hash: string }
 export interface VerifyResult { query: string; product: Product; authenticityScore: number; certificate: { factory: string; batchHash: string; hsCode: string; issuedAt: string }; timeline: ProvenanceEvent[]; simulated: true }
 export interface ApiError { error: { code: string; message: string; requestId: string } }

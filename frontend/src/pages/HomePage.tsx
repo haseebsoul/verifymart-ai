@@ -137,6 +137,9 @@ function CostCalculator({ products }: { products: Product[] }) {
         method: 'POST',
         body: JSON.stringify({
           destinationCountry: 'PK' satisfies Destination,
+          originCountry: origin,
+          destinationCity: city,
+          taxProfile: filer,
           items: [{ productId: selectedProduct.id, quantity }]
         })
       });
@@ -151,20 +154,20 @@ function CostCalculator({ products }: { products: Product[] }) {
   const rows: Array<[string, number | null]> = [
     ['Assessed item value', quote?.subtotal ?? null],
     ['Customs duty', quote?.duty ?? null],
-    ['Additional customs duty', null],
-    ['Regulatory duty', null],
-    ['Federal excise duty', null],
-    ['Sales tax / VAT', quote?.vat ?? null],
-    ['Income tax withholding', null],
-    ['Carrier fee', quote?.carrierFee ?? null],
-    ['Platform fee', null]
+    ['Additional customs duty (demo)', quote?.additionalCustomsDuty ?? null],
+    ['Regulatory duty (demo)', quote?.regulatoryDuty ?? null],
+    ['Federal excise duty (demo)', quote?.federalExciseDuty ?? null],
+    ['Sales tax / VAT (seeded estimate)', quote?.vat ?? null],
+    ['Income tax withholding (demo)', quote?.incomeTaxWithholding ?? null],
+    ['Carrier fee (demo)', quote?.carrierFee ?? null],
+    ['Platform fee (demo)', quote?.platformFee ?? null]
   ];
 
   return (
     <div className="cost-calculator-card">
       <div className="cost-card-heading">
-        <div><span className="certificate-label">COST BREAKDOWN ESTIMATE</span><span className="estimate-currency">USD reference · Pakistan destination</span></div>
-        <span className="cost-source"><i /> Atlas tariff API</span>
+        <div><span className="certificate-label">COST BREAKDOWN ESTIMATE</span><span className="estimate-currency">USD estimate · Pakistan destination · placeholder rates</span></div>
+        <span className="cost-source"><i /> Atlas demo tariff API</span>
       </div>
       <form className="cost-form" onSubmit={calculate}>
         <label>Product category
@@ -214,13 +217,15 @@ function CostCalculator({ products }: { products: Product[] }) {
           </div>
         ))}
         <div className="cost-row cost-total">
-          <span>Total landed cost</span><b>{quote ? usd(quote.total) : '—'}</b>
+          <span>Total landed cost (USD)</span><b>{quote ? usd(quote.total) : '—'}</b>
+        </div>
+        <div className="cost-row cost-total">
+          <span>Illustrative total (PKR)</span><b>{quote?.totalPkr !== null && quote?.totalPkr !== undefined ? new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:2}).format(quote.totalPkr) : '—'}</b>
         </div>
       </div>
       <p className="cost-disclaimer">
         Selected context: origin {origin} · destination {city} · {filer === 'filer' ? 'Filer' : 'Non-filer'}.
-        This Atlas tariff version currently models catalog value, destination duty, VAT and carrier fees only; the origin, city and filer selections do not change the API quote yet.
-        Unconfigured charges are not guessed, and a sourced USD/PKR rate is not currently connected.
+        Origin, city and filer are retained as quote context. Pakistan ACD/RD/FED, withholding, platform fee and USD/PKR conversion use explicit demo placeholders and illustrative calculation bases. These are not official customs/FBR figures or market foreign-exchange data.
       </p>
     </div>
   );

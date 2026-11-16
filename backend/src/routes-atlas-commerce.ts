@@ -50,7 +50,14 @@ atlasCommerceRouter.post(
         dutyCents: Math.round(quote.duty * 100),
         vatCents: Math.round(quote.vat * 100),
         carrierFeeCents: Math.round(quote.carrierFee * 100),
-        totalCents: Math.round(quote.total * 100)
+        additionalCustomsDutyCents: Math.round(quote.additionalCustomsDuty * 100),
+        regulatoryDutyCents: Math.round(quote.regulatoryDuty * 100),
+        federalExciseDutyCents: Math.round(quote.federalExciseDuty * 100),
+        incomeTaxWithholdingCents: Math.round(quote.incomeTaxWithholding * 100),
+        platformFeeCents: Math.round(quote.platformFee * 100),
+        totalCents: Math.round(quote.total * 100),
+        source: quote.source,
+        formulaVersion: quote.formulaVersion
       }
     });
     const response = {

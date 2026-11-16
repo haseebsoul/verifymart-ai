@@ -13,6 +13,13 @@ export interface CheckoutQuoteCents {
   dutyCents: number;
   vatCents: number;
   carrierFeeCents: number;
+  additionalCustomsDutyCents?: number;
+  regulatoryDutyCents?: number;
+  federalExciseDutyCents?: number;
+  incomeTaxWithholdingCents?: number;
+  platformFeeCents?: number;
+  source?: 'seed-tariff-v1' | 'demo-placeholder-tariff-v1';
+  formulaVersion?: 'landed-cost-v1' | 'landed-cost-demo-v2';
   totalCents: number;
 }
 
@@ -159,11 +166,16 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
       const suppliedDuty = BigInt(asLong(input.quote.dutyCents).toString());
       const suppliedVat = BigInt(asLong(input.quote.vatCents).toString());
       const suppliedCarrier = BigInt(asLong(input.quote.carrierFeeCents).toString());
+      const suppliedAdditional = BigInt(asLong(input.quote.additionalCustomsDutyCents ?? 0).toString());
+      const suppliedRegulatory = BigInt(asLong(input.quote.regulatoryDutyCents ?? 0).toString());
+      const suppliedFed = BigInt(asLong(input.quote.federalExciseDutyCents ?? 0).toString());
+      const suppliedWithholding = BigInt(asLong(input.quote.incomeTaxWithholdingCents ?? 0).toString());
+      const suppliedPlatform = BigInt(asLong(input.quote.platformFeeCents ?? 0).toString());
       const suppliedTotal = BigInt(asLong(input.quote.totalCents).toString());
       if (expectedSubtotal !== suppliedSubtotal) {
         throw conflict('A product price changed while your cart was open. Refresh the quote and retry.', 'PRICE_CHANGED');
       }
-      if (suppliedSubtotal + suppliedDuty + suppliedVat + suppliedCarrier !== suppliedTotal) {
+      if (suppliedSubtotal + suppliedDuty + suppliedVat + suppliedCarrier + suppliedAdditional + suppliedRegulatory + suppliedFed + suppliedWithholding + suppliedPlatform !== suppliedTotal) {
         throw Object.assign(new Error('The server-calculated checkout quote is internally inconsistent.'), {
           status: 400, code: 'INVALID_SERVER_QUOTE'
         });
@@ -174,9 +186,14 @@ export async function createMongoCheckout(input: MongoCheckoutRequest): Promise<
         dutyCents: asLong(input.quote.dutyCents),
         vatCents: asLong(input.quote.vatCents),
         carrierFeeCents: asLong(input.quote.carrierFeeCents),
+        additionalCustomsDutyCents: asLong(input.quote.additionalCustomsDutyCents ?? 0),
+        regulatoryDutyCents: asLong(input.quote.regulatoryDutyCents ?? 0),
+        federalExciseDutyCents: asLong(input.quote.federalExciseDutyCents ?? 0),
+        incomeTaxWithholdingCents: asLong(input.quote.incomeTaxWithholdingCents ?? 0),
+        platformFeeCents: asLong(input.quote.platformFeeCents ?? 0),
         totalCents: asLong(input.quote.totalCents),
-        source: 'seed-tariff-v1' as const,
-        formulaVersion: 'landed-cost-v1' as const
+        source: input.quote.source ?? 'seed-tariff-v1',
+        formulaVersion: input.quote.formulaVersion ?? 'landed-cost-v1'
       };
       const order: OrderDocument = {
         _id: orderId,

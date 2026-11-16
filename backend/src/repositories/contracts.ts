@@ -82,7 +82,7 @@ export interface TariffRuleDocument extends Document {
   dutyRateBps: number;
   vatRateBps: number;
   vatIncludesCarrier: boolean;
-  source: 'seed-tariff-v1';
+  source: 'seed-tariff-v1' | 'demo-placeholder-tariff-v1';
 }
 
 export interface OrderItemDocument extends Document {
@@ -105,9 +105,14 @@ export interface OrderDocument extends Document {
     dutyCents: Long;
     vatCents: Long;
     carrierFeeCents: Long;
+    additionalCustomsDutyCents?: Long;
+    regulatoryDutyCents?: Long;
+    federalExciseDutyCents?: Long;
+    incomeTaxWithholdingCents?: Long;
+    platformFeeCents?: Long;
     totalCents: Long;
-    source: 'seed-tariff-v1';
-    formulaVersion: 'landed-cost-v1';
+    source: 'seed-tariff-v1' | 'demo-placeholder-tariff-v1';
+    formulaVersion: 'landed-cost-v1' | 'landed-cost-demo-v2';
   };
   escrow: { state: OrderState; receiptId: string; holdReason: string | null };
   state: OrderState;
