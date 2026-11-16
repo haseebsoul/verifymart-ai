@@ -34,7 +34,7 @@ The 11 collections were created through the authorized Atlas management connecti
 - The cluster is an M0/free deployment. It is a development resource, not evidence of a production-ready HA, backup or point-in-time-recovery posture.
 - The only listed Atlas database user at inspection time was verifymart_app, with readWrite on verifymart_v14. It does not authorize the app to use verifymart_dev.
 - No application MONGODB_URI or secret-manager URI was available to this coding session. No database password was committed or written into repository files.
-- A separate least-privilege application principal for verifymart_dev and a separate audit principal with insert/find only on auditLog are still required. The existing DB user must not be broadened as a shortcut.
+- A separate least-privilege application principal, insert-only audit writer, and find-only audit reader for verifymart_dev are still required. The existing DB user must not be broadened as a shortcut.
 - The Section 20.2 unique and query indexes were created and read back from Atlas: users.email (unique), users.role; merchants.userId (unique); products.sku and batchHash (unique), name+brand text, category, merchantId, status; hubs.code (unique); tariffRules (hsPrefix,country) (unique); orders.idempotencyKey (unique), userId, state, createdAt; threats severity, resolvedAt, productId; inventoryAdjustments productId, actorId, at; auditLog actorId, at; settings.key (unique); trustLedger merchantId, at. Additional products.listingStatus and products(merchantId,listingStatus) indexes support approved public catalog filtering. Runtime bootstrap code declares these indexes except auditLog indexes, which are managed by a separate deployment credential because the app credential must not administer immutable audit history.
 - The branch's normal development/runtime commands now select the Atlas-backed application. The code path is not yet live-verified because the separate application/audit credentials and host network allowlist are not provisioned. The legacy SQLite server is available only through explicitly named compatibility commands and refuses production startup.
 
@@ -45,9 +45,10 @@ Use the following names locally (never commit the values):
     MONGODB_URI=mongodb+srv://<DEV_USER>:<URL_ENCODED_PASSWORD>@verifymartcluster.2yfhbdt.mongodb.net/?retryWrites=true&w=majority&appName=VerifyMartCluster
     MONGODB_DB_NAME=verifymart_dev
     MONGODB_APP_NAME=VerifyMart-Dev
-    MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_USER>:<URL_ENCODED_PASSWORD>@verifymartcluster.2yfhbdt.mongodb.net/?retryWrites=true&w=majority&appName=VerifyMart-Dev-Audit
+    MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_WRITER_USER>:<URL_ENCODED_PASSWORD>@verifymartcluster.2yfhbdt.mongodb.net/?retryWrites=true&w=majority&appName=VerifyMart-Dev-Audit-Writer
+    MONGODB_AUDIT_READ_URI=mongodb+srv://<AUDIT_READER_USER>:<URL_ENCODED_PASSWORD>@verifymartcluster.2yfhbdt.mongodb.net/?retryWrites=true&w=majority&appName=VerifyMart-Dev-Audit-Reader
 
-The app principal must have only the required data privileges for application collections. The audit writer principal must have find/insert on auditLog and must not have update/remove. Prefer a custom database role if Atlas administration supports it.
+The app principal must have only the required data privileges for application collections. The audit writer principal must have insert only on auditLog. The separate audit reader principal must have find only on auditLog. Neither may update, remove, drop, or manage indexes. The admin/migration principal is reserved for reviewed one-off CLI provisioning and must never be configured in the runtime app.
 
 ## Environment separation
 
@@ -83,3 +84,24 @@ The Atlas-backed admin API and dashboard now support hub create/edit/retire and 
 GitHub Actions run **43655633531** passed on implementation commit `b8869fdc7d5ddff028c8618907a05c6da4ba3e75`: install, type-check, build, backend tests (4 files), frontend tests (1 file), ESLint and color lint. Backend coverage was 15.02% statements/lines, 51.61% branches and 31.70% functions, below the SRS 80% target.
 
 External Atlas startup with app/audit principals is still blocked because those credentials and app-host network access are not provisioned. No seed or migration was run. The collection/index inspection was read-only. Full API authorization tests, five-role Playwright, axe/WCAG acceptance and secret scanning remain open release gates.
+
+
+## Live verification snapshot — 2026-11-16
+
+A fresh read-only inspection of the VerifyMart AI project / VerifyMartCluster confirmed all 11 expected collections in `verifymart_dev`. Actual live document counts at inspection time:
+
+| Collection | Documents |
+|---|---:|
+| users | 0 |
+| merchants | 0 |
+| products | 0 |
+| hubs | 5 |
+| tariffRules | 78 |
+| orders | 0 |
+| threats | 0 |
+| inventoryAdjustments | 0 |
+| auditLog | 0 |
+| settings | 3 |
+| trustLedger | 0 |
+
+The Atlas project currently lists only the legacy `verifymart_app` database user, scoped to `verifymart_v14`. It does not provide the three runtime principals required for the development seed. **No seed was run in this verification session**; these counts are a live pre-seed snapshot, not post-seed results. Do not broaden or reuse the legacy credential. Once the app, audit-writer and audit-reader users are provisioned and their URIs are placed in the local untracked environment file, run the checked-in `npm run seed:atlas` script; its output reports all eleven post-run counts.
