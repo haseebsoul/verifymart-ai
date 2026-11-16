@@ -80,6 +80,26 @@ atlasOpsRouter.get(
 );
 
 atlasOpsRouter.get(
+  '/inventory/adjustments',
+  authenticateAtlas,
+  requireAtlasRoleAndOwnership(['inventory_manager','admin']),
+  asyncHandler(async (_req, res) => {
+    const database = getAtlasDb();
+    const adjustments = await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments')
+      .find({}).sort({ at: -1 }).limit(500).toArray();
+    const productIds = [...new Set(adjustments.map(item => item.productId))];
+    const products = await database.collection<ProductDocument>('products')
+      .find({ _id: { $in: productIds } }, { projection: { _id: 1, sku: 1, name: 1 } }).toArray();
+    const productById = new Map(products.map(product => [product._id, product]));
+    res.json({ adjustments: adjustments.map(item => ({
+      id: item._id, productId: item.productId, sku: productById.get(item.productId)?.sku ?? 'unknown',
+      productName: productById.get(item.productId)?.name ?? 'Unknown product',
+      actorId: item.actorId, actorRole: item.actorRole, delta: item.delta, reason: item.reason, at: item.at
+    })) });
+  })
+);
+
+atlasOpsRouter.get(
   '/warehouses',
   authenticateAtlas,
   requireAtlasRoleAndOwnership(['inventory_manager',...operators]),
@@ -179,12 +199,18 @@ atlasOpsRouter.patch(
   requireAtlasRoleAndOwnership([...inventoryRoles], { productIdParam: 'id' }),
   asyncHandler(async (req, res) => {
     const input = z.object({
-      stock: z.number().int().min(0).max(100000),
+      stock: z.number().int().min(0).max(100000).optional(),
+      reorderThreshold: z.number().int().min(0).max(100000).optional(),
       priceUsd: z.number().finite().min(0.01).max(1000000).optional(),
       reason: z.string().trim().min(4).max(500)
-    }).strict().parse(req.body);
-    if (input.priceUsd !== undefined && req.atlasPrincipal!.role !== 'admin') {
+    }).strict().refine(value => value.stock !== undefined || value.reorderThreshold !== undefined || value.priceUsd !== undefined).parse(req.body);
+    const role = req.atlasPrincipal!.role;
+    if (input.priceUsd !== undefined && role !== 'admin') {
       res.status(403).json({ error: { code: 'PRICE_CHANGE_FORBIDDEN', message: 'Only administrators may change product prices.', requestId: req.requestId } });
+      return;
+    }
+    if (input.reorderThreshold !== undefined && role !== 'inventory_manager' && role !== 'admin') {
+      res.status(403).json({ error: { code: 'REORDER_THRESHOLD_FORBIDDEN', message: 'Only Inventory Managers and Administrators may change reorder thresholds.', requestId: req.requestId } });
       return;
     }
     const id = req.params.id;
@@ -198,40 +224,44 @@ atlasOpsRouter.patch(
       await session.withTransaction(async () => {
         const current = await products.findOne({ _id: id }, { session });
         if (!current) throw Object.assign(new Error('Product was not found.'), { status: 404, code: 'PRODUCT_NOT_FOUND' });
-        delta = input.stock - current.stock;
+        delta = input.stock === undefined ? 0 : input.stock - current.stock;
         const now = new Date();
-        const filter: Record<string, unknown> = { _id: id, stock: current.stock };
-        if (req.atlasPrincipal!.role === 'merchant') {
-          filter.merchantId = req.merchantId!;
-          filter.managedBy = 'merchant';
+        const filter: Record<string, unknown> = { _id: id };
+        if (input.stock !== undefined) filter.stock = current.stock;
+        if (role === 'merchant') { filter.merchantId = req.merchantId!; filter.managedBy = 'merchant'; }
+        const setFields: Record<string, unknown> = { updatedAt: now };
+        if (input.stock !== undefined) {
+          setFields.stock = input.stock;
+          setFields.status = input.stock <= current.reorderThreshold ? 'low_stock'
+            : current.status === 'low_stock' ? 'verified' : current.status;
         }
-        const setFields: Record<string, unknown> = {
-          stock: input.stock,
-          updatedAt: now,
-          status: input.stock <= current.reorderThreshold ? 'low_stock' : current.status === 'low_stock' ? 'verified' : current.status
-        };
+        if (input.reorderThreshold !== undefined) {
+          setFields.reorderThreshold = input.reorderThreshold;
+          if (input.stock === undefined) setFields.status = current.stock <= input.reorderThreshold ? 'low_stock'
+            : current.status === 'low_stock' ? 'verified' : current.status;
+        }
         if (input.priceUsd !== undefined) setFields.priceCents = Long.fromNumber(Math.round(input.priceUsd * 100));
-        const result = await products.findOneAndUpdate(
-          filter,
-          { $set: setFields },
-          { session, returnDocument: 'after' }
-        );
-        resultBox.changed = result ?? null;
-        if (!resultBox.changed) throw Object.assign(new Error('Inventory changed concurrently.'), { status: 409, code: 'INVENTORY_CONFLICT' });
+        resultBox.changed = await products.findOneAndUpdate(
+          filter, { $set: setFields }, { session, returnDocument: 'after' }
+        ) ?? null;
+        if (!resultBox.changed) throw Object.assign(new Error('Inventory changed concurrently. Refresh and retry.'), { status: 409, code: 'INVENTORY_CONFLICT' });
         if (delta !== 0) {
           await database.collection<InventoryAdjustmentDocument>('inventoryAdjustments').insertOne({
             _id: 'iad_' + randomUUID().replaceAll('-', '').slice(0, 18),
-            productId: id, actorId: req.atlasPrincipal!.id, actorRole: req.atlasPrincipal!.role,
+            productId: id, actorId: req.atlasPrincipal!.id, actorRole: role,
             delta, reason: input.reason, at: now
           }, { session });
         }
       });
-    } finally {
-      await session.endSession();
-    }
+    } finally { await session.endSession(); }
     const changed = resultBox.changed;
     if (!changed) throw new Error('Inventory update completed without a product.');
-    res.json({ productId: id, sku: changed.sku, stock: changed.stock });
+    await appendAuditEvent({
+      actorId: req.atlasPrincipal!.id, action: 'INVENTORY_PRODUCT_UPDATED',
+      targetType: 'product', targetId: id,
+      details: { changedFields: Object.keys(input).filter(key => key !== 'reason'), reason: input.reason, stockDelta: delta }
+    });
+    res.json({ productId: id, sku: changed.sku, stock: changed.stock, reorderThreshold: changed.reorderThreshold });
   })
 );
 

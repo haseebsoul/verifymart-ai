@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import pino from 'pino';
 import { WebSocket, WebSocketServer } from 'ws';
 import { app } from './app-atlas.js';
+import { subscribeOrderEvents } from './realtime/order-events.js';
 import { checkAtlasReady, closeAtlas, connectAtlas, connectAuditLog, connectAuditReader, getAtlasDb } from './infrastructure/atlas.js';
 import type { HubDocument, MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
 
@@ -88,6 +89,17 @@ wss.on('connection', async (socket, request) => {
   }
 
   socket.on('error', error => logger.warn({ error: error.message }, 'WebSocket client error'));
+});
+
+subscribeOrderEvents(event => {
+  for (const socket of wss.clients) {
+    if (socket.readyState !== WebSocket.OPEN) continue;
+    const context = contexts.get(socket);
+    if (!context?.userId) continue;
+    const isStaff = context.role === 'operator' || context.role === 'admin';
+    const isOwner = context.role === 'shopper' && context.userId === event.ownerUserId;
+    if (isStaff || isOwner) send(socket, event);
+  }
 });
 
 wss.on('error', error => logger.error({ error: error.message }, 'WebSocket server error'));

@@ -6,7 +6,8 @@ import { authenticateAtlas, requireAtlasRoleAndOwnership } from './middleware/at
 import { asyncHandler } from './middleware/http.js';
 import { appendAuditEvent } from './repositories/audit.js';
 import { createMongoCheckout } from './repositories/checkout.js';
-import type { OrderDocument, ProductDocument } from './repositories/contracts.js';
+import type { OrderDocument, OrderState, ProductDocument } from './repositories/contracts.js';
+import { publishOrderEvent } from './realtime/order-events.js';
 import { calculateAtlasDuty } from './services/duty-atlas.js';
 
 export const atlasCommerceRouter = Router();
@@ -53,6 +54,13 @@ atlasCommerceRouter.post(
         totalCents: Math.round(quote.total * 100)
       }
     });
+    if (!result.idempotencyReplayed) {
+      publishOrderEvent({
+        type: 'ORDER_ESCROW_CREATED', orderId: result.order._id,
+        ownerUserId: result.order.userId, state: result.order.state,
+        createdAt: result.order.createdAt.toISOString(), simulated: true
+      });
+    }
     const response = {
       orderId: result.order._id,
       escrowReceiptId: result.order.escrow.receiptId,
@@ -116,36 +124,45 @@ atlasCommerceRouter.get(
   })
 );
 
-async function transitionEscrow(
-  orderId: string,
-  actorId: string,
-  nextState: 'released' | 'on_hold' | 'refunded',
-  reason?: string
-): Promise<OrderDocument | null> {
+export function isEscrowTransitionAllowed(from: OrderState, to: OrderState): boolean {
+  const allowed: Record<OrderState, OrderState[]> = {
+    held: ['released', 'on_hold', 'refunded'],
+    on_hold: ['held', 'refunded'],
+    released: [],
+    refunded: []
+  };
+  return allowed[from].includes(to);
+}
+
+async function transitionEscrow(orderId: string, actorId: string, nextState: OrderState, reason?: string): Promise<OrderDocument | null> {
   const database = getAtlasDb();
   const orders = database.collection<OrderDocument>('orders');
   const session = getAtlasClient().startSession();
   let changed: OrderDocument | null = null;
-
+  let previousState: OrderState | undefined;
   try {
     await session.withTransaction(async () => {
       const current = await orders.findOne({ _id: orderId }, { session });
       if (!current) return;
-      if (current.state !== 'held') {
-        throw Object.assign(new Error('Only held escrow can transition to ' + nextState + '.'), {
+      previousState = current.state;
+      if (!isEscrowTransitionAllowed(current.state, nextState)) {
+        throw Object.assign(new Error('Escrow cannot transition from ' + current.state + ' to ' + nextState + '.'), {
           status: 409, code: 'INVALID_ESCROW_STATE'
         });
       }
+      if ((nextState === 'on_hold' || nextState === 'held' || nextState === 'refunded') && !reason) {
+        throw Object.assign(new Error('A reason is required for this escrow state transition.'), {
+          status: 400, code: 'ESCROW_REASON_REQUIRED'
+        });
+      }
       const result = await orders.findOneAndUpdate(
-        { _id: orderId, state: 'held' },
-        {
-          $set: {
-            state: nextState,
-            'escrow.state': nextState,
-            'escrow.holdReason': nextState === 'on_hold' ? (reason ?? 'Operator review requested') : null,
-            updatedAt: new Date()
-          }
-        },
+        { _id: orderId, state: current.state },
+        { $set: {
+          state: nextState,
+          'escrow.state': nextState,
+          'escrow.holdReason': nextState === 'on_hold' ? reason! : null,
+          updatedAt: new Date()
+        } },
         { session, returnDocument: 'after' }
       );
       changed = result ?? null;
@@ -154,14 +171,18 @@ async function transitionEscrow(
   } finally {
     await session.endSession();
   }
-
-  if (changed) {
+  if (changed && previousState) {
+    const action = nextState === 'released' ? 'ESCROW_RELEASED'
+      : nextState === 'on_hold' ? 'ESCROW_HELD'
+      : nextState === 'refunded' ? 'ESCROW_REFUNDED'
+      : 'ESCROW_REINSTATED';
     await appendAuditEvent({
-      actorId,
-      action: nextState === 'released' ? 'ESCROW_RELEASED' : nextState === 'on_hold' ? 'ESCROW_HELD' : 'ESCROW_REFUNDED',
-      targetType: 'order',
-      targetId: orderId,
-      details: { state: nextState, reason: reason ?? null, simulated: true }
+      actorId, action, targetType: 'order', targetId: orderId,
+      details: { from: previousState, to: nextState, reason: reason ?? null, simulated: true }
+    });
+    publishOrderEvent({
+      type: 'ORDER_ESCROW_UPDATED', orderId, ownerUserId: changed.userId,
+      state: changed.state, createdAt: changed.updatedAt.toISOString(), simulated: true
     });
   }
   return changed;
@@ -183,8 +204,21 @@ atlasCommerceRouter.post('/orders/:id/hold', authenticateAtlas,
   asyncHandler(async (req, res) => {
     const id = req.params.id;
     if (!id) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
-    const input = z.object({ reason: z.string().trim().min(4).max(500) }).parse(req.body);
+    const input = z.object({ reason: z.string().trim().min(4).max(500) }).strict().parse(req.body);
     const order = await transitionEscrow(id, req.atlasPrincipal!.id, 'on_hold', input.reason);
+    if (!order) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
+    res.json({ orderId: order._id, state: order.state, reason: input.reason, simulated: true });
+  })
+);
+
+
+atlasCommerceRouter.post('/orders/:id/restore', authenticateAtlas,
+  requireAtlasRoleAndOwnership(['operator','admin']),
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    if (!id) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
+    const input = z.object({ reason: z.string().trim().min(4).max(500) }).strict().parse(req.body);
+    const order = await transitionEscrow(id, req.atlasPrincipal!.id, 'held', input.reason);
     if (!order) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
     res.json({ orderId: order._id, state: order.state, reason: input.reason, simulated: true });
   })
@@ -195,7 +229,7 @@ atlasCommerceRouter.post('/orders/:id/refund', authenticateAtlas,
   asyncHandler(async (req, res) => {
     const id = req.params.id;
     if (!id) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
-    const input = z.object({ reason: z.string().trim().min(4).max(500) }).parse(req.body);
+    const input = z.object({ reason: z.string().trim().min(4).max(500) }).strict().parse(req.body);
     const order = await transitionEscrow(id, req.atlasPrincipal!.id, 'refunded', input.reason);
     if (!order) { res.status(404).json({ error: { code: 'ORDER_NOT_FOUND', message: 'Order was not found.', requestId: req.requestId } }); return; }
     res.json({ orderId: order._id, state: order.state, simulated: true, notice: 'No payment was returned because no payment was collected.' });
