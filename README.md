@@ -164,7 +164,8 @@ Copy `.env.example` to a local, untracked environment file and supply values the
 NODE_ENV=development
 PORT=5000
 MONGODB_URI=mongodb+srv://<APP_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Dev
-MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit
+MONGODB_AUDIT_URI=mongodb+srv://<AUDIT_WRITER_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit-Writer
+MONGODB_AUDIT_READ_URI=mongodb+srv://<AUDIT_READER_USER>:<URL_ENCODED_PASSWORD>@<CLUSTER>/?retryWrites=true&w=majority&appName=VerifyMart-Audit-Reader
 MONGODB_DB_NAME=verifymart_dev
 MONGODB_APP_NAME=VerifyMart-Dev
 JWT_ACCESS_SECRET=<RANDOM_SECRET_AT_LEAST_32_CHARACTERS>
@@ -189,7 +190,7 @@ Legacy SQLite commands are explicitly separated as `npm run dev:sqlite`, `npm ru
 
 Create all collections and indexes with a separate deployment/admin principal before runtime startup. The app runtime validates that collections and indexes exist; it does not try to create database objects with its restricted application credential. The audit principal must be append-only at the database permission layer. The server startup validates the app connection, the audit connection, the JWT secret and required app indexes; `/api/health` is liveness, while `/api/ready` checks both database principals and index readiness.
 
-`npm run seed` is limited to `verifymart_dev` and `verifymart_staging`, refuses production and is idempotent for the demo catalogue, hubs, tariffs, settings and optional demo fixtures. It fills missing deterministic catalogue rows without overwriting existing products. Demo accounts are created only when `DEMO_PASSWORD` is explicitly configured (10+ characters); no demo password is checked in.
+`npm run seed:atlas` (also `npm run seed`) is limited to `verifymart_dev` and `verifymart_staging`, refuses production and is idempotent for the demo catalogue, hubs, tariffs, settings and optional demo fixtures. It reports the ten operational collection counts through `MONGODB_URI` and counts `auditLog` separately using `MONGODB_AUDIT_READ_URI`. It fills missing deterministic catalogue rows without overwriting existing products. Demo accounts are created only when `DEMO_PASSWORD` is explicitly configured (10+ characters); no demo password is checked in.
 
 ### Migration safety
 
@@ -231,6 +232,6 @@ Full manual for Atlas custom roles, separate users, local environment and startu
 
 The sign-in and registration forms require an explicit stakeholder role. Shopper registration is open. Merchant registration creates a pending supplier profile in the same Atlas transaction as the user record. Inventory Manager, Operations Auditor and System Administrator registration require role-specific invitations: set `ADMIN_INVITE_KEY` for administrator registration and optionally set `ROLE_INVITE_KEYS` to a JSON object containing `inventory_manager` and/or `operator` keys. Never commit real invitation values.
 
-In a development environment (`NODE_ENV=development`), setting `DEMO_PASSWORD` (10+ characters) enables the evaluator panel. The seeded demo shortcut checks the server-side password against the seeded account hash; the password is not sent to or exposed in browser code. The five fixed demo emails are `admin@verifymart.ai`, `merchant@verifymart.ai`, `inventory@verifymart.ai`, `auditor@verifymart.ai` and `shopper@verifymart.ai`.
+In a development environment (`NODE_ENV=development`), setting both `ENABLE_DEMO_AUTH=true` and `DEMO_PASSWORD` (10+ characters) enables the evaluator panel. The shortcut is off unless the explicit flag is enabled. The seeded demo shortcut checks the server-side password against the seeded account hash; the password is not sent to or exposed in browser code. The five fixed demo emails are `admin@verifymart.ai`, `merchant@verifymart.ai`, `inventory@verifymart.ai`, `auditor@verifymart.ai` and `shopper@verifymart.ai`.
 
 The Atlas API defaults to port 5000 and Vite to 5173. Vite uses `strictPort` and proxies `/api` and `/ws` to port 5000. `/api/health` checks the Atlas application and audit connections; `/api/public/metrics` returns aggregate public record counts and in-process p95 API latency. The landed-cost engine currently supports the seeded product value, destination duty, VAT and carrier fee in USD. City-level, filer-specific, additional customs, regulatory, excise, withholding, platform fees and a live USD/PKR conversion are not yet configured and are not fabricated by the UI.
