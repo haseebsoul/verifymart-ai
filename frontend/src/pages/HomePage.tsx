@@ -93,7 +93,7 @@ function VerificationCard() {
           </div>
         )}
       </div>
-      <div className="certificate-caption"><span>CERTIFICATE / 01</span><span>PUBLIC VERIFICATION</span></div>
+      <div className="certificate-caption"><span>RECORD / 01</span><span>PUBLIC VERIFICATION</span></div>
     </div>
   );
 }
