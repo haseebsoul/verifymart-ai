@@ -71,14 +71,8 @@ const countries = [
 ] as const;
 
 function workspaceFor(user: PublicUser): string {
-  switch (user.role) {
-    case 'admin': return '/dashboard/admin';
-    case 'merchant': return '/dashboard';
-    case 'inventory_manager': return '/dashboard';
-    case 'operator': return '/dashboard';
-    case 'shopper': return '/dashboard';
-    default: return '/dashboard';
-  }
+  const routes:Record<string,string>={shopper:'/dashboard/shopper',merchant:'/dashboard/merchant',inventory_manager:'/dashboard/inventory',operator:'/dashboard/operator',admin:'/dashboard/admin'};
+  return routes[user.role]??'/dashboard';
 }
 
 export function LoginPage() {
