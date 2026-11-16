@@ -74,9 +74,9 @@ function workspaceFor(user: PublicUser): string {
   switch (user.role) {
     case 'admin': return '/dashboard/admin';
     case 'merchant': return '/dashboard';
-    case 'inventory_manager': return '/dashboard/manage';
+    case 'inventory_manager': return '/dashboard';
     case 'operator': return '/dashboard';
-    case 'shopper': return '/store';
+    case 'shopper': return '/dashboard';
     default: return '/dashboard';
   }
 }
