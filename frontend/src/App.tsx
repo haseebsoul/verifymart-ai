@@ -1,30 +1,148 @@
-import { lazy,Suspense,useEffect,useState } from 'react';
-import { BrowserRouter,Route,Routes,Navigate,Outlet } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { BrowserRouter, Route, Routes, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { Header,SiteFooter } from './components/Header';
+import { Header, SiteFooter } from './components/Header';
 import { CartDrawer } from './components/CartDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
-const HomePage=lazy(()=>import('./pages/HomePage').then(m=>({default:m.HomePage})));
-const StorePage=lazy(()=>import('./pages/StorePage').then(m=>({default:m.StorePage})));
-const VerifyPage=lazy(()=>import('./pages/VerifyPage').then(m=>({default:m.VerifyPage})));
-const LoginPage=lazy(()=>import('./pages/LoginPage').then(m=>({default:m.LoginPage})));
-const NotFoundPage=lazy(()=>import('./pages/SystemPages').then(m=>({default:m.NotFoundPage})));
-const ForbiddenPage=lazy(()=>import('./pages/SystemPages').then(m=>({default:m.ForbiddenPage})));
-const DashboardLayout=lazy(()=>import('./dashboard/DashboardLayout').then(m=>({default:m.DashboardLayout})));
-const OverviewPage=lazy(()=>import('./dashboard/OverviewPage').then(m=>({default:m.OverviewPage})));
-const MerchantDashboardPage=lazy(()=>import('./dashboard/MerchantDashboardPage').then(m=>({default:m.MerchantDashboardPage})));;
-const ShopperDashboardPage=lazy(()=>import('./dashboard/ShopperDashboardPage').then(m=>({default:m.ShopperDashboardPage})));
-const TopologyPage=lazy(()=>import('./dashboard/TopologyPage').then(m=>({default:m.TopologyPage})));
-const ThreatsPage=lazy(()=>import('./dashboard/ThreatsPage').then(m=>({default:m.ThreatsPage})));
-const ActivityPage=lazy(()=>import('./dashboard/ActivityPage').then(m=>({default:m.ActivityPage})));
-const ManagePage=lazy(()=>import('./dashboard/ManagePage').then(m=>({default:m.ManagePage})));
-const RewardsPage=lazy(()=>import('./dashboard/RewardsPage').then(m=>({default:m.RewardsPage})));
-const ReportsPage=lazy(()=>import('./dashboard/ReportsPage').then(m=>({default:m.ReportsPage})));
-const AccountPage=lazy(()=>import('./dashboard/AccountPage').then(m=>({default:m.AccountPage})));
-const AdminPage=lazy(()=>import('./dashboard/AdminPage').then(m=>({default:m.AdminPage})));
-function PublicLayout(){return <><Header/><OfflineBanner/><Outlet/><SiteFooter/><CartDrawer/></>;}
-function OfflineBanner(){const [offline,setOffline]=useState(!navigator.onLine);useEffect(()=>{const on=()=>setOffline(false);const off=()=>setOffline(true);window.addEventListener('online',on);window.addEventListener('offline',off);return()=>{window.removeEventListener('online',on);window.removeEventListener('offline',off);};},[]);return offline?<div className="offline-banner" role="status">You are offline. Showing saved data where available.</div>:null;}
-function Protected({admin=false}:{admin?:boolean}){const {user,loading}=useAuth();if(loading)return <div className="route-loading"><span className="loading-mark">V</span><p>Opening your workspace…</p></div>;if(!user)return <Navigate to="/login?next=/dashboard" replace/>;const role=user.role as string;if(!['shopper','merchant','inventory_manager','operator','admin'].includes(role))return <Navigate to="/403" replace/>;if(admin&&role!=='admin')return <Navigate to="/403" replace/>;return <Outlet/>;}
-function DashboardHome(){const {user}=useAuth();const role=user?.role as string;if(role==='shopper')return <ShopperDashboardPage/>;if(role==='merchant')return <MerchantDashboardPage/>;if(role==='inventory_manager')return <ManagePage/>;return <OverviewPage/>;}
-function RoutedApp(){return <Suspense fallback={<div className="route-loading"><span className="loading-mark">V</span><p>Loading VerifyMart…</p></div>}><Routes><Route element={<PublicLayout/>}><Route path="/" element={<HomePage/>}/><Route path="/store" element={<StorePage/>}/><Route path="/verify" element={<VerifyPage/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<LoginPage/>}/><Route path="/403" element={<ForbiddenPage/>}/><Route path="*" element={<NotFoundPage/>}/></Route><Route element={<Protected/>}><Route path="/dashboard" element={<DashboardLayout/>}><Route index element={<DashboardHome/>}/><Route path="topology" element={<TopologyPage/>}/><Route path="threats" element={<ThreatsPage/>}/><Route path="activity" element={<ActivityPage/>}/><Route path="manage" element={<ManagePage/>}/><Route path="rewards" element={<RewardsPage/>}/><Route path="reports" element={<ReportsPage/>}/><Route path="account" element={<AccountPage/>}/><Route element={<Protected admin/>}><Route path="admin" element={<AdminPage/>}/></Route></Route></Route><Route path="*" element={<Navigate to="/" replace/>}/></Routes></Suspense>;}
-export default function App(){return <BrowserRouter><ErrorBoundary><RoutedApp/></ErrorBoundary></BrowserRouter>;}
+
+const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })));
+const StorePage = lazy(() => import('./pages/StorePage').then(m => ({ default: m.StorePage })));
+const VerifyPage = lazy(() => import('./pages/VerifyPage').then(m => ({ default: m.VerifyPage })));
+const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const NotFoundPage = lazy(() => import('./pages/SystemPages').then(m => ({ default: m.NotFoundPage })));
+const ForbiddenPage = lazy(() => import('./pages/SystemPages').then(m => ({ default: m.ForbiddenPage })));
+const DashboardLayout = lazy(() => import('./dashboard/DashboardLayout').then(m => ({ default: m.DashboardLayout })));
+const OverviewPage = lazy(() => import('./dashboard/OverviewPage').then(m => ({ default: m.OverviewPage })));
+const MerchantDashboardPage = lazy(() => import('./dashboard/MerchantDashboardPage').then(m => ({ default: m.MerchantDashboardPage })));
+const ShopperDashboardPage = lazy(() => import('./dashboard/ShopperDashboardPage').then(m => ({ default: m.ShopperDashboardPage })));
+const TopologyPage = lazy(() => import('./dashboard/TopologyPage').then(m => ({ default: m.TopologyPage })));
+const ThreatsPage = lazy(() => import('./dashboard/ThreatsPage').then(m => ({ default: m.ThreatsPage })));
+const ActivityPage = lazy(() => import('./dashboard/ActivityPage').then(m => ({ default: m.ActivityPage })));
+const ManagePage = lazy(() => import('./dashboard/ManagePage').then(m => ({ default: m.ManagePage })));
+const RewardsPage = lazy(() => import('./dashboard/RewardsPage').then(m => ({ default: m.RewardsPage })));
+const ReportsPage = lazy(() => import('./dashboard/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const AccountPage = lazy(() => import('./dashboard/AccountPage').then(m => ({ default: m.AccountPage })));
+const AdminPage = lazy(() => import('./dashboard/AdminPage').then(m => ({ default: m.AdminPage })));
+const EscrowOrdersPage = lazy(() => import('./dashboard/EscrowOrdersPage').then(m => ({ default: m.EscrowOrdersPage })));
+const InventoryAdjustmentsPage = lazy(() => import('./dashboard/InventoryAdjustmentsPage').then(m => ({ default: m.InventoryAdjustmentsPage })));
+
+function PublicLayout() {
+  return <><Header /><OfflineBanner /><Outlet /><SiteFooter /><CartDrawer /></>;
+}
+
+function OfflineBanner() {
+  const [offline, setOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+  return offline ? <div className="offline-banner" role="status">You are offline. Showing saved data where available.</div> : null;
+}
+
+function Protected({ roles }: { roles?: string[] }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="route-loading"><span className="loading-mark">V</span><p>Opening your workspace…</p></div>;
+  if (!user) return <Navigate to="/login?next=/dashboard" replace />;
+  const allowed = ['shopper', 'merchant', 'inventory_manager', 'operator', 'admin'];
+  if (!allowed.includes(user.role) || (roles && !roles.includes(user.role))) return <Navigate to="/403" replace />;
+  return <Outlet />;
+}
+
+function RoleLanding() {
+  const { user } = useAuth();
+  const destination: Record<string, string> = {
+    admin: '/dashboard/admin',
+    operator: '/dashboard/operator',
+    inventory_manager: '/dashboard/inventory',
+    merchant: '/dashboard/merchant',
+    shopper: '/dashboard/shopper'
+  };
+  return <Navigate to={destination[user?.role ?? ''] ?? '/403'} replace />;
+}
+
+function RoutedApp() {
+  return (
+    <Suspense fallback={<div className="route-loading"><span className="loading-mark">V</span><p>Loading VerifyMart…</p></div>}>
+      <Routes>
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/store" element={<StorePage />} />
+          <Route path="/verify" element={<VerifyPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<LoginPage />} />
+          <Route path="/403" element={<ForbiddenPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+
+        <Route element={<Protected />}>
+          <Route path="/dashboard" element={<RoleLanding />} />
+        </Route>
+
+        <Route element={<Protected roles={['admin']} />}>
+          <Route path="/dashboard/admin" element={<DashboardLayout />}>
+            <Route index element={<AdminPage />} />
+            <Route path="operations" element={<OverviewPage />} />
+            <Route path="topology" element={<TopologyPage />} />
+            <Route path="threats" element={<ThreatsPage />} />
+            <Route path="activity" element={<ActivityPage />} />
+            <Route path="orders" element={<EscrowOrdersPage />} />
+            <Route path="inventory" element={<ManagePage />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="account" element={<AccountPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<Protected roles={['operator']} />}>
+          <Route path="/dashboard/operator" element={<DashboardLayout />}>
+            <Route index element={<OverviewPage />} />
+            <Route path="topology" element={<TopologyPage />} />
+            <Route path="threats" element={<ThreatsPage />} />
+            <Route path="activity" element={<ActivityPage />} />
+            <Route path="orders" element={<EscrowOrdersPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="account" element={<AccountPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<Protected roles={['inventory_manager']} />}>
+          <Route path="/dashboard/inventory" element={<DashboardLayout />}>
+            <Route index element={<ManagePage />} />
+            <Route path="alerts" element={<ThreatsPage />} />
+            <Route path="warehouses" element={<TopologyPage />} />
+            <Route path="adjustments" element={<InventoryAdjustmentsPage />} />
+            <Route path="account" element={<AccountPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<Protected roles={['merchant']} />}>
+          <Route path="/dashboard/merchant" element={<DashboardLayout />}>
+            <Route index element={<MerchantDashboardPage />} />
+            <Route path="listings" element={<MerchantDashboardPage />} />
+            <Route path="trust" element={<RewardsPage />} />
+            <Route path="account" element={<AccountPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<Protected roles={['shopper']} />}>
+          <Route path="/dashboard/shopper" element={<DashboardLayout />}>
+            <Route index element={<ShopperDashboardPage />} />
+            <Route path="orders" element={<ShopperDashboardPage />} />
+            <Route path="verify" element={<VerifyPage />} />
+            <Route path="catalog" element={<StorePage />} />
+            <Route path="account" element={<AccountPage />} />
+          </Route>
+        </Route>
+      </Routes>
+    </Suspense>
+  );
+}
+
+export default function App() {
+  return <BrowserRouter><ErrorBoundary><RoutedApp /></ErrorBoundary></BrowserRouter>;
+}

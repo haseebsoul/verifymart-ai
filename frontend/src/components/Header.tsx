@@ -14,9 +14,12 @@ const roleTitles: Record<string, string> = {
 
 function workspacePath(role: string): string {
   if (role === 'admin') return '/dashboard/admin';
-  if (role === 'inventory_manager') return '/dashboard/manage';
-  if (role === 'shopper') return '/store';
-  return '/dashboard';
+  const paths: Record<string, string> = {
+    admin: '/dashboard/admin', operator: '/dashboard/operator',
+    inventory_manager: '/dashboard/inventory', merchant: '/dashboard/merchant',
+    shopper: '/dashboard/shopper'
+  };
+  return paths[role] ?? '/dashboard';
 }
 
 export function Header() {
@@ -88,8 +91,8 @@ export function SiteFooter() {
         </div>
         <div className="footer-links">
           <div><strong>Explore</strong><Link to="/store">Catalog</Link><Link to="/verify">Batch lookup</Link></div>
-          <div><strong>Platform</strong><Link to="/register">Supplier registration</Link><Link to="/dashboard">Workspaces</Link></div>
-          <div><strong>Engineering</strong><a href="/api/health" target="_blank" rel="noreferrer">API health</a><a href="/api/public/metrics" target="_blank" rel="noreferrer">Public metrics</a></div>
+          <div><strong>Workspaces</strong><Link to="/dashboard/shopper">Buyer</Link><Link to="/dashboard/merchant">Supplier</Link><Link to="/dashboard/inventory">Inventory Manager</Link><Link to="/dashboard/operator">SRE Operator</Link><Link to="/dashboard/admin">Administrator</Link></div>
+          <div><strong>Engineering</strong><a href="/api/health" target="_blank" rel="noreferrer">API health</a><a href="/api/public/metrics" target="_blank" rel="noreferrer">Public metrics</a><Link to="/register">Create account</Link></div>
         </div>
       </div>
       <div className="footer-bottom">

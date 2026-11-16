@@ -73,10 +73,10 @@ const countries = [
 function workspaceFor(user: PublicUser): string {
   switch (user.role) {
     case 'admin': return '/dashboard/admin';
-    case 'merchant': return '/dashboard';
-    case 'inventory_manager': return '/dashboard';
-    case 'operator': return '/dashboard';
-    case 'shopper': return '/dashboard';
+    case 'merchant': return '/dashboard/merchant';
+    case 'inventory_manager': return '/dashboard/inventory';
+    case 'operator': return '/dashboard/operator';
+    case 'shopper': return '/dashboard/shopper';
     default: return '/dashboard';
   }
 }
