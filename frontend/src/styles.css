@@ -494,7 +494,7 @@ h1 em, h2 em, h3 em { font-weight: 400; }
 .chart-legend { display: flex; justify-content: center; gap: 18px; margin-top: -5px; font-size: 10px; }
 .chart-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-tomato { background: var(--brand-emerald); }
-.legend-sage { background: var(--brand-emerald); }
+.legend-sage { background: var(--ink-secondary); }
 .orders-panel .panel-heading { margin-bottom: 11px; }
 .table-scroll { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; }

@@ -43,7 +43,7 @@ function RoutedApp(){return <Suspense fallback={<div className="route-loading"><
   <Route element={<InventoryManagerDashboardLayout/>}><Route index element={<ManagePage/>}/><Route path="hubs" element={<TopologyPage/>}/><Route path="threats" element={<ThreatsPage/>}/><Route path="account" element={<AccountPage/>}/></Route>
 </Route>
 <Route path="/dashboard/operator" element={<Protected allowedRoles={['operator']}/>}>
-  <Route element={<OperatorDashboardLayout/>}><Route index element={<OverviewPage/>}/><Route path="topology" element={<TopologyPage/>}/><Route path="threats" element={<ThreatsPage/>}/><Route path="orders" element={<ReportsPage/>}/><Route path="activity" element={<ActivityPage/>}/><Route path="reports" element={<ReportsPage/>}/><Route path="account" element={<AccountPage/>}/></Route>
+  <Route element={<OperatorDashboardLayout/>}><Route index element={<OverviewPage/>}/><Route path="topology" element={<TopologyPage/>}/><Route path="threats" element={<ThreatsPage/>}/><Route path="orders" element={<OverviewPage/>}/><Route path="activity" element={<ActivityPage/>}/><Route path="reports" element={<ReportsPage/>}/><Route path="account" element={<AccountPage/>}/></Route>
 </Route>
 <Route path="/dashboard/admin" element={<Protected allowedRoles={['admin']}/>}>
   <Route element={<AdminDashboardLayout/>}><Route index element={<AdminPage/>}/><Route path="users" element={<AdminPage/>}/><Route path="merchants" element={<AdminPage/>}/><Route path="inventory" element={<ManagePage/>}/><Route path="tariffs" element={<TopologyPage/>}/><Route path="activity" element={<ActivityPage/>}/><Route path="settings" element={<AccountPage/>}/></Route>
