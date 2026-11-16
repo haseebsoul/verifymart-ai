@@ -72,10 +72,10 @@ migrationSuite('SQLite to Atlas migration planning (optional native dependency)'
   });
 
   it('rejects valid JSON values that are not objects', () => {
-    expect(() => toJsonObject('[]', 'audit record a3')).toThrow(/migration aborted to avoid discarding data/i);
+    expect(() => migrationModule!.toJsonObject('[]', 'audit record a3')).toThrow(/migration aborted to avoid discarding data/i);
   });
 
   it('keeps a genuinely empty optional JSON field empty', () => {
-    expect(toJsonObject(null, 'legacy null details')).toEqual({});
+    expect(migrationModule!.toJsonObject(null, 'legacy null details')).toEqual({});
   });
 });

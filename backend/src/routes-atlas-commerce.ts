@@ -50,8 +50,9 @@ atlasCommerceRouter.post(
           taxProfile: input.taxProfile ?? 'filer'
         })
       : await calculateAtlasDuty(input.destinationCountry, input.items);
-    const demo = 'pakistanDemo' in quote ? quote.pakistanDemo : undefined;
-    const demoCents = (key: string) => Math.round(demo?.components.find(component => component.key === key)?.amountUsd ?? 0 * 100);
+    const demo = input.destinationCountry === 'PK'
+      ? (quote as Awaited<ReturnType<typeof calculatePakistanDemoEstimate>>).pakistanDemo
+      : undefined;
     const cents = (value: number) => Math.round(value * 100);
     const result = await createMongoCheckout({
       idempotencyKey: key,
@@ -132,11 +133,11 @@ atlasCommerceRouter.get(
           duty: order.quote.dutyCents.toNumber() / 100,
           vat: order.quote.vatCents.toNumber() / 100,
           carrierFee: order.quote.carrierFeeCents.toNumber() / 100,
-          additionalCustomsDuty: order.quote.additionalCustomsDutyCents?.toNumber() / 100 ?? 0,
-          regulatoryDuty: order.quote.regulatoryDutyCents?.toNumber() / 100 ?? 0,
-          federalExciseDuty: order.quote.federalExciseDutyCents?.toNumber() / 100 ?? 0,
-          withholdingTax: order.quote.withholdingTaxCents?.toNumber() / 100 ?? 0,
-          platformFee: order.quote.platformFeeCents?.toNumber() / 100 ?? 0,
+          additionalCustomsDuty: (order.quote.additionalCustomsDutyCents?.toNumber() ?? 0) / 100,
+          regulatoryDuty: (order.quote.regulatoryDutyCents?.toNumber() ?? 0) / 100,
+          federalExciseDuty: (order.quote.federalExciseDutyCents?.toNumber() ?? 0) / 100,
+          withholdingTax: (order.quote.withholdingTaxCents?.toNumber() ?? 0) / 100,
+          platformFee: (order.quote.platformFeeCents?.toNumber() ?? 0) / 100,
           exchangeRatePkrPerUsd: order.quote.exchangeRatePkrPerUsd ?? null,
           totalPkr: order.quote.totalPkr ?? null,
           total: order.quote.totalCents.toNumber() / 100,
