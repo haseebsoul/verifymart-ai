@@ -90,3 +90,33 @@ Scope note: this exposes the existing shopper registration flow. It does not imp
 ## Change log
 
 - 2026-11-16: Added this handoff map to document the repository layout, five roles, registration commits, safe workflow and outstanding verification work.
+
+
+## 2026-11-16 implementation update
+
+### Runtime ports and API telemetry
+
+- `backend/src/server-atlas.ts` defaults to port `5000` (overridable through `PORT`).
+- `frontend/vite.config.ts` binds to `5173`, enables `strictPort`, and proxies `/api` and `/ws` to port `5000`.
+- `GET /api/health` now checks the Atlas application and separate audit connections before reporting `status: ok`.
+- `GET /api/public/metrics` returns aggregate product, signed-batch, supplier and order counts, plus rolling in-process p95 latency and API counters.
+
+### Five-role registration and sign-in
+
+- `backend/src/routes-atlas-auth.ts` accepts the five Atlas roles. Shopper registration remains open; merchant registration requires business name and country and creates a pending `merchants` profile atomically with the `users` record.
+- `inventory_manager`, `operator` and `admin` registrations are gated by server-side keys. Configure `ADMIN_INVITE_KEY` for admin; configure `ROLE_INVITE_KEYS` as a JSON map for inventory manager/operator. No key is embedded in frontend code.
+- Login optionally validates `selectedRole` after the password is verified and returns a helpful `ROLE_MISMATCH` response without creating a session.
+- `POST /api/auth/demo-login` is development-only and checks the server-side `DEMO_PASSWORD` against seeded password hashes. It does not return or expose the password to the browser.
+- The frontend role selector and demo evaluator panel are in `frontend/src/pages/LoginPage.tsx`; auth API integration is in `frontend/src/context/AuthContext.tsx`.
+- Default post-auth routes: admin `/dashboard/admin`, inventory manager `/dashboard/manage`, merchant/operator `/dashboard`, shopper `/store`.
+
+### Public editorial UI
+
+- `frontend/src/styles.css` now defines parchment, emerald, mint, white surface, editorial serif, body sans and monospace metadata tokens, while keeping the same theme tokens available to existing dashboard/store pages.
+- `frontend/src/pages/HomePage.tsx` contains the five numbered Pakistan-focused sections, live batch verification, four checkpoint cards, a product-backed tariff calculator, the live Atlas catalog and reliability telemetry.
+- The calculator intentionally labels unsupported fees as `Not configured`. The current Atlas duty engine only models product value, destination duty, VAT and carrier fee in USD; a sourced USD/PKR rate and city-/filer-specific rates are not connected.
+- `frontend/src/components/Header.tsx` exposes the new section navigation and role-aware workspace/sign-out actions.
+
+### Verification boundaries
+
+These changes have been committed to the feature branch through GitHub. They have **not** been built or exercised against the user's local Windows runtime or Atlas credentials in this session. Do not report Windows port cleanup, local `.env` validation, Atlas seeded counts, or end-to-end auth as verified until those checks run on that machine. Do not run seed, provisioning or migration as part of this work.
