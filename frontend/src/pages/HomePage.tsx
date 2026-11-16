@@ -1,19 +1,19 @@
-import { useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, BadgeCheck, Boxes, CheckCircle2, ClipboardCheck, Clock3,
-  Globe2, PackageCheck, ShieldCheck, ShoppingBag, Store, Truck
+  ShieldCheck, ShoppingBag, Store, Truck
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { CATEGORIES, DESTINATIONS, DESTINATION_NAMES, type Destination, type DutyQuote, type Product, type VerifyResult } from '@verifymart/shared';
+import { CATEGORIES, type Destination, type DutyQuote, type Product } from '@verifymart/shared';
 import { api } from '../lib/api';
 import { useCart } from '../context/cart';
 
 type PublicMetrics = {
   api: { status: string; p95LatencyMs: number; requests: number; errors: number };
-  database: { products: number; signedBatchRecords: number; registeredSuppliers: number; orderRecords: number };
+  database: { products: number; batchProvenanceRecords: number; registeredSuppliers: number; orderRecords: number };
 };
-type Health = { status: string; database: string; persistence: string; p95LatencyMs: number };
+type Health = { status: string; database: string; persistence: string; p95LatencyMs: number };\ntype AtlasVerificationResult = {\n  query: string; found: boolean; simulated: true; recordType: 'product' | 'order' | 'not_found';\n  authenticityNote: string; authenticityScore?: number;\n  product?: { id: string; sku: string; name: string; brand: string; category: string; priceUsd: number; status: string; authenticityScore: number; batchHash: string; hsCode: string; originHubId: string };\n  timeline?: Array<{ id: string; stage: string; hubId: string; occurredAt: string; hash: string }>;\n};
 
 const destinations = [
   'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi',
@@ -22,7 +22,7 @@ const destinations = [
 const origins = ['China', 'UAE', 'UK', 'USA', 'Turkey', 'Singapore', 'Switzerland'];
 const roleSteps = [
   { number: '01', title: 'Supplier registration', text: 'Email verification and administrator approval establish the supplier account.', icon: Store },
-  { number: '02', title: 'Signed batch record', text: 'A SHA-256 digest and signature record identify the submitted product batch.', icon: ShieldCheck },
+  { number: '02', title: 'Hash-anchored batch record', text: 'A SHA-256 digest identifies the submitted product batch and links its recorded custody events.', icon: ShieldCheck },
   { number: '03', title: 'Customs estimate', text: 'A versioned PCT / HS tariff record powers the published landed-cost estimate.', icon: ClipboardCheck },
   { number: '04', title: 'Delivery evidence', text: 'Order, carrier and escrow states make each handoff visible to the right people.', icon: Truck }
 ];
@@ -31,17 +31,17 @@ function usd(value: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
 }
 
-function SectionEyebrow({ children }: { children: React.ReactNode }) {
+function SectionEyebrow({ children }: { children: ReactNode }) {
   return <span className="eyebrow section-eyebrow">{children}</span>;
 }
 
 function VerificationCard() {
   const [query, setQuery] = useState('');
-  const [result, setResult] = useState<VerifyResult | null>(null);
+  const [result, setResult] = useState<AtlasVerificationResult | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const verify = async (event: React.FormEvent<HTMLFormElement>) => {
+  const verify = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const value = query.trim();
     if (!value) return;
@@ -49,7 +49,7 @@ function VerificationCard() {
     setError('');
     setResult(null);
     try {
-      setResult(await api<VerifyResult>(`/verify/${encodeURIComponent(value)}`));
+      setResult(await api<AtlasVerificationResult>(`/verify/${encodeURIComponent(value)}`));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No matching batch record was found.');
     } finally {
@@ -66,10 +66,10 @@ function VerificationCard() {
       <div className="certificate-card">
         <div className="certificate-card-top">
           <span className="certificate-mark"><ShieldCheck size={22} /></span>
-          <span className="certificate-label">SIGNED BATCH RECORD</span>
+          <span className="certificate-label">BATCH PROVENANCE RECORD</span>
         </div>
         <h2>Check a supplier record</h2>
-        <p>Inspect the batch identity and its recorded custody trail.</p>
+        <p>Inspect the batch digest and its recorded custody trail. Application records are not manufacturer-signed proof.</p>
         <form onSubmit={verify} className="certificate-form">
           <label htmlFor="batch-hash">SHA-256 batch hash</label>
           <input
@@ -87,8 +87,8 @@ function VerificationCard() {
         {error && <p className="form-error" role="alert">{error}</p>}
         {result && (
           <div className="verification-result" role="status">
-            <div><BadgeCheck size={18} /><strong>{result.product.name}</strong></div>
-            <span>{result.authenticityScore}/100 authenticity · {result.timeline.length} recorded checkpoints</span>
+            <div><BadgeCheck size={18} /><strong>{result.product?.name ?? 'Verification record'}</strong></div>
+            <span>{result.authenticityScore ?? result.product?.authenticityScore ?? '—'}/100 · {result.timeline?.length ?? 0} recorded checkpoints</span>
             <Link to={`/verify?query=${encodeURIComponent(result.query)}`}>Open full verification record</Link>
           </div>
         )}
@@ -116,7 +116,7 @@ function CostCalculator({ products }: { products: Product[] }) {
   const selectedProduct = products.find(product => product.id === productId && product.category === category)
     ?? categoryProducts[0];
 
-  const calculate = async (event: React.FormEvent<HTMLFormElement>) => {
+  const calculate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedProduct) {
       setError('The live product catalogue is required to calculate a quote.');
@@ -251,7 +251,7 @@ export function HomePage() {
       <section className="editorial-hero section-shell" id="trusted-imports">
         <div className="editorial-hero-copy">
           <SectionEyebrow>01 / TRUSTED IMPORTS FOR PAKISTAN</SectionEyebrow>
-          <h1>Supplier-signed records. Sourced estimates. Clear order states.</h1>
+          <h1>Supplier-submitted records. Sourced estimates. Clear order states.</h1>
           <p>
             Verify supplier-submitted batch events, inspect versioned landed-cost estimates and follow transparent order states
             from origin to delivery. One record for every important handoff.
@@ -261,7 +261,7 @@ export function HomePage() {
             <Link className="button button-outline" to="/verify">Check a batch record</Link>
           </div>
           <div className="live-database-counters" aria-live="polite">
-            <div><b>{metrics ? metrics.signedBatchRecords.toLocaleString() : '—'}</b><span>Signed batch records</span></div>
+            <div><b>{metrics ? metrics.batchProvenanceRecords.toLocaleString() : '—'}</b><span>Batch provenance records</span></div>
             <div><b>{metrics ? metrics.registeredSuppliers.toLocaleString() : '—'}</b><span>Registered suppliers</span></div>
             <div><b>{metrics ? metrics.orderRecords.toLocaleString() : '—'}</b><span>Order records</span></div>
           </div>
