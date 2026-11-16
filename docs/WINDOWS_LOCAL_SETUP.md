@@ -37,19 +37,32 @@ Scope all privileges to database `verifymart_dev`. Grant the runtime only the co
 
 Also grant `listCollections` on the `verifymart_dev` database and `listIndexes` on each of the ten application collections above. Do **not** grant any action on `auditLog`. Do not grant database/cluster administration or index-creation actions to the runtime app user; indexes are deployment-managed.
 
-### Audit role: `verifymart_dev_audit_append`
+### Audit writer role: `verifymart_dev_audit_insert`
 
 Grant exactly:
 - Resource: database `verifymart_dev`, collection `auditLog`
-- Actions: `find` and `insert`
+- Action: `insert` only
 
-Do not inherit `readWrite`; it would also permit updates and deletes. Do not grant update, remove, drop, or index-management actions.
+Do not grant `find`, update, remove, drop, or index-management actions.
 
-## 4. Create two database users
+### Audit reader role: `verifymart_dev_audit_read`
+
+Grant exactly:
+- Resource: database `verifymart_dev`, collection `auditLog`
+- Action: `find` only
+
+This credential is used only by Operator/Admin audit review and export routes. Do not grant insert, update, remove, drop, or index-management actions.
+
+### Admin/migration principal
+
+A separate full-administration identity is reserved for reviewed, one-off provisioning/migration CLI work. Never configure it in the running API, seed process, or ordinary local runtime. Do not create or use it as a shortcut for missing app/audit credentials.
+
+## 4. Create three runtime database users
 
 Create separate SCRAM database users:
 - App user: assigned only the `verifymart_dev_app` custom role.
-- Audit user: assigned only the `verifymart_dev_audit_append` custom role.
+- Audit writer: assigned only the `verifymart_dev_audit_insert` custom role.
+- Audit reader: assigned only the `verifymart_dev_audit_read` custom role.
 
 Generate separate strong passwords in Atlas and store them in your local password manager. Use the Atlas-generated connection strings and URL-encode any special characters in passwords. Do not send passwords or full connection strings in chat, GitHub issues, commits, or screenshots.
 
@@ -62,18 +75,19 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\scripts\Start-VerifyMart-Windows.ps1
 ```
 
-On first run the launcher creates `backend/.env`, generates a local development-only `JWT_ACCESS_SECRET`, prints the PC's public IPv4, and stops until both URIs are filled in. Open `backend/.env` locally and set:
+On first run the launcher creates `backend/.env`, generates a local development-only `JWT_ACCESS_SECRET`, prints the PC's public IPv4, and stops until all three runtime URIs are filled in. Open `backend/.env` locally and set:
 
 ```dotenv
 NODE_ENV=development
-PORT=8000
+PORT=5000
 JWT_ACCESS_SECRET=<generated locally by the launcher; keep it>
 COOKIE_SECURE=false
 CORS_ORIGIN=http://localhost:5173
 MONGODB_DB_NAME=verifymart_dev
 MONGODB_APP_NAME=VerifyMart-Dev
 MONGODB_URI=<app user's Atlas connection URI>
-MONGODB_AUDIT_URI=<audit user's Atlas connection URI>
+MONGODB_AUDIT_URI=<insert-only audit writer URI>
+MONGODB_AUDIT_READ_URI=<find-only audit reader URI>
 DEMO_PASSWORD=
 ```
 
@@ -85,14 +99,14 @@ To create the optional five local demo role accounts, set `DEMO_PASSWORD` to a p
 
 Run the launcher again. It performs, in order:
 
-1. `npm install`
+1. `npm install` (SQLite migration dependency is optional for the Atlas app path)
 2. `npm run seed` against `verifymart_dev` only
 3. `npm run build`
 4. `npm run dev`
 
 Open:
 - Web UI: http://localhost:5173
-- API liveness: http://localhost:8000/api/health
+- API liveness: http://localhost:5000/api/health
 - API readiness: http://localhost:8000/api/ready
 
 The readiness endpoint must report `ready` before considering the app connected. A working Atlas administration connector is not a substitute for this application-level check.
