@@ -22,7 +22,7 @@ const logger = pino({
     paths: [
       'req.headers.authorization', 'req.headers.cookie', 'req.headers["sec-websocket-protocol"]',
       'password', 'passwordHash', 'token', 'refreshToken', 'MONGODB_URI',
-      'MONGODB_AUDIT_URI', 'JWT_ACCESS_SECRET'
+      'MONGODB_AUDIT_URI', 'MONGODB_AUDIT_READ_URI', 'JWT_ACCESS_SECRET'
     ],
     censor: '[REDACTED]'
   }

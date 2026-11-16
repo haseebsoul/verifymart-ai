@@ -16,7 +16,7 @@ import { appendAuditEvent } from './repositories/audit.js';
 export const atlasAuthRouter = Router();
 
 atlasAuthRouter.get('/auth/mode', (_req, res) => {
-  const demoMode = process.env.NODE_ENV === 'development' && Boolean(process.env.DEMO_PASSWORD);
+  const demoMode = process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEMO_AUTH === 'true' && Boolean(process.env.DEMO_PASSWORD);
   res.json({ demoMode });
 });
 const cookieName = 'verifymart_refresh';
@@ -286,7 +286,7 @@ const demoAccounts: Record<Role, string> = {
  * when the server has an explicit demo password and is not running in production.
  */
 atlasAuthRouter.post('/auth/demo-login', loginLimiter, asyncHandler(async (req, res) => {
-  if (process.env.NODE_ENV !== 'development' || !process.env.DEMO_PASSWORD) {
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEMO_AUTH !== 'true' || !process.env.DEMO_PASSWORD) {
     res.status(404).json({ error: { code: 'DEMO_ACCESS_DISABLED', message: 'Quick demo access is disabled.', requestId: req.requestId } });
     return;
   }

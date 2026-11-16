@@ -11,13 +11,27 @@ export type AtlasCollectionName = (typeof ATLAS_COLLECTIONS)[number];
 
 let appClient: MongoClient | undefined;
 let appDb: Db | undefined;
-let auditClient: MongoClient | undefined;
-let auditDb: Db | undefined;
+let auditWriterClient: MongoClient | undefined;
+let auditWriterDb: Db | undefined;
+let auditReaderClient: MongoClient | undefined;
+let auditReaderDb: Db | undefined;
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(name + ' is required before Atlas can be used.');
   return value;
+}
+
+function databaseName(): string {
+  const name = requiredEnv('MONGODB_DB_NAME');
+  if (!['verifymart_dev', 'verifymart_staging', 'verifymart_prod'].includes(name)) {
+    throw new Error('MONGODB_DB_NAME must be verifymart_dev, verifymart_staging, or verifymart_prod. Legacy verifymart_v14 is not an application target.');
+  }
+  return name;
+}
+
+function clientOptions(suffix?: string) {
+  return { appName: (process.env.MONGODB_APP_NAME ?? 'VerifyMart-AI') + (suffix ?? '') };
 }
 
 export function getAtlasDb(): Db {
@@ -39,27 +53,24 @@ export function getCollection<TSchema extends Document = Document>(
 export async function connectAtlas(): Promise<Db> {
   if (appDb) return appDb;
   const uri = requiredEnv('MONGODB_URI');
-  const databaseName = requiredEnv('MONGODB_DB_NAME');
-  if (!['verifymart_dev', 'verifymart_staging', 'verifymart_prod'].includes(databaseName)) {
-    throw new Error('MONGODB_DB_NAME must be verifymart_dev, verifymart_staging, or verifymart_prod. Legacy verifymart_v14 is not an application target.');
-  }
-  const client = new MongoClient(uri, {
-    appName: process.env.MONGODB_APP_NAME ?? 'VerifyMart-AI'
-  });
+  const name = databaseName();
+  const client = new MongoClient(uri, clientOptions());
 
   try {
     await client.connect();
-    const database = client.db(databaseName);
+    const database = client.db(name);
     await database.command({ ping: 1 });
 
     const existing = new Set(
       await database.listCollections({}, { nameOnly: true }).map((item) => item.name).toArray()
     );
-    const missingCollections = ATLAS_COLLECTIONS.filter((name) => !existing.has(name));
+    const missingCollections = ATLAS_COLLECTIONS.filter((collection) => !existing.has(collection));
     if (missingCollections.length) {
       throw new Error('Atlas database is missing provisioned collections: ' + missingCollections.join(', '));
     }
 
+    // The application principal can inspect indexes on operational collections only.
+    // auditLog indexes are validated by the out-of-band provisioning check.
     const missingIndexes = await inspectExpectedAtlasIndexes(database);
     if (missingIndexes.length) {
       throw new Error('Atlas database is missing required indexes: ' + missingIndexes.join(', '));
@@ -75,26 +86,41 @@ export async function connectAtlas(): Promise<Db> {
 }
 
 /**
- * The audit writer uses a distinct Atlas principal. Grant it find/insert on
- * auditLog only; do not grant update/remove. The ordinary app URI must not be
- * used to append audit entries.
+ * Append-only audit writer. Its Atlas principal has insert permission on
+ * auditLog only; it must never be used for a read or verification query.
  */
 export async function connectAuditLog(): Promise<Collection<AuditLogDocument>> {
-  if (auditDb) return auditDb.collection('auditLog');
-  const uri = requiredEnv('MONGODB_AUDIT_URI');
-  const databaseName = requiredEnv('MONGODB_DB_NAME');
-  const client = new MongoClient(uri, {
-    appName: (process.env.MONGODB_APP_NAME ?? 'VerifyMart-AI') + '-Audit'
-  });
+  if (auditWriterDb) return auditWriterDb.collection<AuditLogDocument>('auditLog');
+  const client = new MongoClient(requiredEnv('MONGODB_AUDIT_URI'), clientOptions('-Audit-Writer'));
 
   try {
     await client.connect();
-    const database = client.db(databaseName);
+    const database = client.db(databaseName());
     await database.command({ ping: 1 });
-    // This read confirms that the URI can access the collection without testing writes.
+    auditWriterClient = client;
+    auditWriterDb = database;
+    return database.collection<AuditLogDocument>('auditLog');
+  } catch (error) {
+    await client.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Separate read-only audit principal. Only Operator/Admin API handlers call
+ * readAuditEvents; the Atlas database role grants find and nothing else.
+ */
+export async function connectAuditReader(): Promise<Collection<AuditLogDocument>> {
+  if (auditReaderDb) return auditReaderDb.collection<AuditLogDocument>('auditLog');
+  const client = new MongoClient(requiredEnv('MONGODB_AUDIT_READ_URI'), clientOptions('-Audit-Reader'));
+
+  try {
+    await client.connect();
+    const database = client.db(databaseName());
+    await database.command({ ping: 1 });
     await database.collection<AuditLogDocument>('auditLog').findOne({}, { projection: { _id: 1 } });
-    auditClient = client;
-    auditDb = database;
+    auditReaderClient = client;
+    auditReaderDb = database;
     return database.collection<AuditLogDocument>('auditLog');
   } catch (error) {
     await client.close().catch(() => undefined);
@@ -103,19 +129,24 @@ export async function connectAuditLog(): Promise<Collection<AuditLogDocument>> {
 }
 
 export async function closeAtlas(): Promise<void> {
-  const clients = [appClient, auditClient].filter((client): client is MongoClient => Boolean(client));
+  const clients = [appClient, auditWriterClient, auditReaderClient]
+    .filter((client): client is MongoClient => Boolean(client));
   appClient = undefined;
   appDb = undefined;
-  auditClient = undefined;
-  auditDb = undefined;
+  auditWriterClient = undefined;
+  auditWriterDb = undefined;
+  auditReaderClient = undefined;
+  auditReaderDb = undefined;
   await Promise.all(clients.map((client) => client.close()));
 }
 
 export async function checkAtlasReady(): Promise<void> {
   await getAtlasDb().command({ ping: 1 });
-  if (!auditDb) throw new Error('The separate Atlas audit principal is not connected.');
-  await auditDb.command({ ping: 1 });
-  await auditDb.collection<AuditLogDocument>('auditLog').findOne({}, { projection: { _id: 1 } });
+  if (!auditWriterDb) throw new Error('The separate insert-only Atlas audit principal is not connected.');
+  await auditWriterDb.command({ ping: 1 });
+  if (!auditReaderDb) throw new Error('The separate find-only Atlas audit principal is not connected.');
+  await auditReaderDb.command({ ping: 1 });
+  await auditReaderDb.collection<AuditLogDocument>('auditLog').findOne({}, { projection: { _id: 1 } });
 }
 
 export function asUtcDate(value: string | Date | null | undefined): Date | null {

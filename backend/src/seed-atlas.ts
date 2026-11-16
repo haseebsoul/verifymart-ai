@@ -218,11 +218,22 @@ async function seed():Promise<void> {
     }
 
     const counts:Record<string,number>={};
-    for(const name of ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger']) {
+    // The application principal is explicitly forbidden from reading auditLog.
+    for(const name of ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','settings','trustLedger']) {
       counts[name]=await database.collection(name).countDocuments();
     }
-    console.log('Atlas dev seed completed. Provenance events and seed metrics are marked simulated.');
-    console.log(JSON.stringify(counts));
+    const auditReader=new MongoClient(required('MONGODB_AUDIT_READ_URI'),{appName:'VerifyMart-Seed-Audit-Reader'});
+    try {
+      await auditReader.connect();
+      const auditDatabase=auditReader.db(dbName);
+      await auditDatabase.command({ping:1});
+      counts.auditLog=await auditDatabase.collection('auditLog').countDocuments();
+    } finally {
+      await auditReader.close();
+    }
+    console.log('Atlas development seed completed. Seed provenance and tariff components are simulated/demo records.');
+    console.log('Verified collection counts (auditLog counted through the dedicated find-only principal):');
+    console.log(JSON.stringify(counts,null,2));
   } finally {
     await client.close();
   }
