@@ -70,6 +70,10 @@ VerifyMartAI/
 └── .env.example
 ```
 
+## 🧭 Developer handoff
+
+For the current source-code map, five-role routing, registration changes, safe Git workflow and outstanding verification items, see [docs/DEVELOPMENT_HANDOFF.md](docs/DEVELOPMENT_HANDOFF.md).
+
 ## 🚀 Getting Started
 
 ### Requirements
