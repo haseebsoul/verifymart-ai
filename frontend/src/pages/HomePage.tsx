@@ -27,10 +27,10 @@ const destinations = [
 ];
 const origins = ['China', 'UAE', 'UK', 'USA', 'Turkey', 'Singapore', 'Switzerland'];
 const roleSteps = [
-  { number: '01', title: 'Supplier registration', text: 'Email verification and administrator approval establish the supplier account.', icon: Store },
+  { number: '01', title: 'Supplier registration', text: 'The supplier business profile is stored in Atlas and begins in pending review before published listings are enabled.', icon: Store },
   { number: '02', title: 'Hash-anchored batch record', text: 'A SHA-256 digest identifies the submitted product batch and links its recorded custody events.', icon: ShieldCheck },
   { number: '03', title: 'Customs estimate', text: 'A versioned PCT / HS tariff record powers the published landed-cost estimate.', icon: ClipboardCheck },
-  { number: '04', title: 'Delivery evidence', text: 'Order, carrier and escrow states make each handoff visible to the right people.', icon: Truck }
+  { number: '04', title: 'Delivery evidence', text: 'Order and escrow states make each checkout handoff visible to the permitted workspaces.', icon: Truck }
 ];
 
 function usd(value: number): string {
@@ -260,7 +260,7 @@ export function HomePage() {
           <SectionEyebrow>01 / TRUSTED IMPORTS FOR PAKISTAN</SectionEyebrow>
           <h1>Supplier-submitted records. Sourced estimates. Clear order states.</h1>
           <p>
-            Verify supplier-submitted batch events, inspect versioned landed-cost estimates and follow transparent order states
+            Inspect published batch records, review versioned landed-cost estimates and follow transparent order states
             from origin to delivery. One record for every important handoff.
           </p>
           <div className="editorial-hero-actions">
@@ -277,9 +277,10 @@ export function HomePage() {
         <div className="editorial-hero-visual"><VerificationCard /></div>
       </section>
 
-      <div className="logistics-ticker" aria-label="Pakistan trade and delivery network">
+      <div className="logistics-ticker" aria-label="Pakistan trade and carrier reference points">
         <span>Karachi Port</span><i>·</i><span>Port Qasim</span><i>·</i><span>Lahore Dry Port</span><i>·</i><span>TCS</span><i>·</i><span>Leopards</span><i>·</i><span>M&amp;P</span>
       </div>
+      <p className="ticker-disclaimer">Port, courier and carrier names are reference points only; no live logistics or partner integration is asserted.</p>
 
       <section className="editorial-section section-shell" id="how-it-works">
         <div className="editorial-section-heading">
@@ -321,7 +322,7 @@ export function HomePage() {
         <div className="editorial-section-heading catalog-heading">
           <div>
             <SectionEyebrow>04 / SUPPLIER RECORDS / CATALOG</SectionEyebrow>
-            <h2>Supplier-submitted catalog records.</h2>
+            <h2>Published catalog records, traceable to origin.</h2>
           </div>
           <Link className="text-link" to="/store">Open full catalog <ArrowRight size={16} /></Link>
         </div>
