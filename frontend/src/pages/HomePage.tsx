@@ -13,7 +13,13 @@ type PublicMetrics = {
   api: { status: string; p95LatencyMs: number; requests: number; errors: number };
   database: { products: number; batchProvenanceRecords: number; registeredSuppliers: number; orderRecords: number };
 };
-type Health = { status: string; database: string; persistence: string; p95LatencyMs: number };\ntype AtlasVerificationResult = {\n  query: string; found: boolean; simulated: true; recordType: 'product' | 'order' | 'not_found';\n  authenticityNote: string; authenticityScore?: number;\n  product?: { id: string; sku: string; name: string; brand: string; category: string; priceUsd: number; status: string; authenticityScore: number; batchHash: string; hsCode: string; originHubId: string };\n  timeline?: Array<{ id: string; stage: string; hubId: string; occurredAt: string; hash: string }>;\n};
+type Health = { status: string; database: string; persistence: string; p95LatencyMs: number };
+type AtlasVerificationResult = {
+  query: string; found: boolean; simulated: true; recordType: 'product' | 'order' | 'not_found';
+  authenticityNote: string; authenticityScore?: number;
+  product?: { id: string; sku: string; name: string; brand: string; category: string; priceUsd: number; status: string; authenticityScore: number; batchHash: string; hsCode: string; originHubId: string };
+  timeline?: Array<{ id: string; stage: string; hubId: string; occurredAt: string; hash: string }>;
+};
 
 const destinations = [
   'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi',
