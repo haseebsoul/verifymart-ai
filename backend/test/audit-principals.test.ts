@@ -7,7 +7,7 @@ const { writer, reader } = vi.hoisted(() => ({
 
 vi.mock('../src/infrastructure/atlas.js', () => ({
   connectAuditLog: writer,
-  connectAuditLogReader: reader
+  connectAuditReader: reader
 }));
 
 import { appendAuditEvent, readAuditEvents } from '../src/repositories/audit.js';
