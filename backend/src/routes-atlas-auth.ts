@@ -12,6 +12,7 @@ import { asyncHandler } from './middleware/http.js';
 import type { MerchantDocument, Role, UserDocument } from './repositories/contracts.js';
 import { MongoUserRepository } from './repositories/users.js';
 import { appendAuditEvent } from './repositories/audit.js';
+import { buildRefreshRotationPipeline } from './services/refresh-rotation.js';
 
 export const atlasAuthRouter = Router();
 
@@ -88,27 +89,6 @@ function jwtSecret(): string {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
-}
-
-export function buildRefreshRotationPipeline(
-  consumedTokenHash: string,
-  replacement: { tokenHash: string; createdAt: Date; expiresAt: Date }
-) {
-  return [{
-    $set: {
-      refreshSessions: {
-        $slice: [{
-          $concatArrays: [{
-            $filter: {
-              input: { $ifNull: ['$refreshSessions', []] },
-              as: 'session',
-              cond: { $ne: ['$$session.tokenHash', consumedTokenHash] }
-            }
-          }, [replacement]]
-        }, -20]
-      }
-    }
-  }];
 }
 
 function safeUser(user: UserDocument) {
@@ -373,8 +353,8 @@ atlasAuthRouter.post('/auth/refresh', asyncHandler(async (req, res) => {
     createdAt: now,
     expiresAt: new Date(now.getTime() + sevenDaysMs)
   };
-  // One conditional aggregation-pipeline update consumes the old token and
-  // appends its replacement atomically; concurrent requests cannot both win.
+  // One conditional pipeline update consumes the old token and appends its
+  // replacement atomically. Concurrent refresh requests cannot both succeed.
   const rotated = await users.updateOne(
     {
       _id: user._id,

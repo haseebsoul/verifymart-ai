@@ -92,7 +92,7 @@ try {
 
     Write-EnvFile -Path $envPath -Lines @(
       'NODE_ENV=development',
-      'PORT=8000',
+      'PORT=5000',
       "JWT_ACCESS_SECRET=$jwtSecret",
       'JWT_ACCESS_TTL=15m',
       'COOKIE_SECURE=false',
@@ -101,6 +101,7 @@ try {
       'MONGODB_APP_NAME=VerifyMart-Dev',
       'MONGODB_URI=',
       'MONGODB_AUDIT_URI=',
+      'MONGODB_AUDIT_READ_URI=',
       'VITE_API_URL=/api',
       'DEMO_PASSWORD='
     )
@@ -116,7 +117,7 @@ try {
   }
 
   $missing = @()
-  foreach ($name in @('MONGODB_URI', 'MONGODB_AUDIT_URI')) {
+  foreach ($name in @('MONGODB_URI', 'MONGODB_AUDIT_URI', 'MONGODB_AUDIT_READ_URI')) {
     $value = [string]$envValues[$name]
     if ([string]::IsNullOrWhiteSpace($value) -or $value.Contains('<') -or $value.Contains('>') -or $value -notmatch '^mongodb(\+srv)?://') {
       $missing += $name
@@ -141,7 +142,8 @@ try {
 
     Write-Host ('Open this local file in Notepad: ' + $envPath)
     Write-Host 'Set MONGODB_URI to the dedicated app user URI for verifymart_dev.'
-    Write-Host 'Set MONGODB_AUDIT_URI to the separate audit user URI with find/insert only on auditLog.'
+    Write-Host 'Set MONGODB_AUDIT_URI to the insert-only audit writer URI for auditLog.'
+    Write-Host 'Set MONGODB_AUDIT_READ_URI to the find-only audit reader URI for auditLog.'
     Write-Host 'Keep MONGODB_DB_NAME=verifymart_dev.'
     Write-Host ('Missing or invalid configuration: ' + ($missing -join ', ')) -ForegroundColor Red
     exit 2
@@ -175,8 +177,8 @@ try {
 
     Write-Host ''
     Write-Host 'Starting VerifyMart. Web UI: http://localhost:5173' -ForegroundColor Green
-    Write-Host 'API: http://localhost:8000/api/health'
-    Write-Host 'Database readiness: http://localhost:8000/api/ready'
+    Write-Host 'API: http://localhost:5000/api/health'
+    Write-Host 'Database readiness: http://localhost:5000/api/ready'
     Write-Host 'Press Ctrl+C in this window to stop the local application.'
 
     & npm.cmd run dev

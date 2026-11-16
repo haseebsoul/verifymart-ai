@@ -29,8 +29,8 @@ const merchantNav:NavItem[]=[
 const inventoryNav:NavItem[]=[
   {to:inventoryBase,label:'Inventory',icon:LayoutDashboard,end:true},
   {to:inventoryBase+'/hubs',label:'Hubs & stock map',icon:Globe2},
+  {to:inventoryBase+'/adjustments',label:'Adjustment ledger',icon:Activity},
   {to:inventoryBase+'/threats',label:'Threat visibility',icon:ShieldAlert},
-  {to:inventoryBase+'/adjustments',label:'Adjustment ledger',icon:Boxes},
   {to:inventoryBase+'/account',label:'Account',icon:Boxes}
 ];
 const operatorNav:NavItem[]=[
@@ -71,6 +71,24 @@ function useWorkspaceSocket(userId:string|undefined, setStatus:(status:'connecti
   },[userId,setStatus]);
 }
 
+
+type SidebarUser = { name: string; role: WorkspaceRole };
+type SidebarSharedProps = { user: SidebarUser; collapsed: boolean; mobile: boolean; onClose: () => void; onSignOut: () => void };
+function SidebarFrame({role,title,navigation,user,collapsed,mobile,onClose,onSignOut}: SidebarSharedProps & {role:WorkspaceRole;title:string;navigation:NavItem[]}) {
+  return <aside className={`dashboard-sidebar dashboard-sidebar-${role} ${mobile?'mobile-open':''}`}>
+    <div className="dashboard-brand"><span className="brand-mark"><ShieldCheck size={20}/></span>{!collapsed&&<span>VerifyMart <i>AI</i></span>}<button className="sidebar-close" onClick={onClose} aria-label="Close navigation"><X size={17}/></button></div>
+    <div className="sidebar-label">{title.toUpperCase()}</div>
+    <nav className="dashboard-nav">
+      {navigation.map(item=><NavLink key={item.to} to={item.to} end={item.end} onClick={onClose} title={collapsed?item.label:undefined}><item.icon size={18}/><span>{item.label}</span></NavLink>)}
+    </nav>
+    <div className="sidebar-bottom"><div className="sidebar-telemetry"><span className="pulse-dot"/>{!collapsed&&<span>Prototype / demo feed</span>}</div><div className="sidebar-user"><span className="avatar">{user.name.split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</span>{!collapsed&&<span><b>{user.name}</b><small>{title}</small></span>}<button onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={16}/></button></div></div>
+  </aside>;
+}
+function ShopperSidebar(props: SidebarSharedProps){return <SidebarFrame {...props} role="shopper" title="Shopper workspace" navigation={shopperNav}/>;}
+function MerchantSidebar(props: SidebarSharedProps){return <SidebarFrame {...props} role="merchant" title="Merchant workspace" navigation={merchantNav}/>;}
+function InventoryManagerSidebar(props: SidebarSharedProps){return <SidebarFrame {...props} role="inventory_manager" title="Inventory workspace" navigation={inventoryNav}/>;}
+function OperatorSidebar(props: SidebarSharedProps){return <SidebarFrame {...props} role="operator" title="Operations console" navigation={operatorNav}/>;}
+function AdminSidebar(props: SidebarSharedProps){return <SidebarFrame {...props} role="admin" title="Administration" navigation={adminNav}/>;}
 function WorkspaceFrame({role,title,navigation,children}:{role:WorkspaceRole;title:string;navigation:NavItem[];children?:ReactNode}) {
   const {user,logout}=useAuth();const navigate=useNavigate();const location=useLocation();
   const [socketStatus,setSocketStatus]=useState<'connecting'|'connected'|'reconnecting'>('connecting');
@@ -78,16 +96,14 @@ function WorkspaceFrame({role,title,navigation,children}:{role:WorkspaceRole;tit
   useWorkspaceSocket(user?.id,setSocketStatus);
   if(!user)return null;
   if(user.role!==role)return <Navigate to="/403" replace/>;
+  const sidebarProps: SidebarSharedProps = { user, collapsed, mobile, onClose: () => setMobile(false), onSignOut: () => { void logout().then(() => navigate('/')); } };
   return <div className={`dashboard-shell dashboard-shell-${role} ${collapsed?'sidebar-collapsed':''}`}>
-    <aside className={`dashboard-sidebar dashboard-sidebar-${role} ${mobile?'mobile-open':''}`}>
-      <div className="dashboard-brand"><span className="brand-mark"><ShieldCheck size={20}/></span>{!collapsed&&<span>VerifyMart <i>AI</i></span>}<button className="sidebar-close" onClick={()=>setMobile(false)} aria-label="Close navigation"><X size={17}/></button></div>
-      <div className="sidebar-label">{title.toUpperCase()}</div>
-      <nav className="dashboard-nav">
-        {navigation.map(item=><NavLink key={item.to} to={item.to} {...(item.end === undefined ? {} : {end:item.end})} onClick={()=>setMobile(false)} {...(collapsed ? {title:item.label} : {})}><item.icon size={18}/><span>{item.label}</span></NavLink>)}
-        {role==='admin'&&<><div className="sidebar-label admin-label">GOVERNANCE</div><NavLink to={adminBase+'/users'} onClick={()=>setMobile(false)}><Users size={18}/><span>People & roles</span></NavLink></>}
-      </nav>
-      <div className="sidebar-bottom"><div className="sidebar-telemetry"><span className="pulse-dot"/>{!collapsed&&<span>Prototype / demo feed</span>}</div><div className="sidebar-user"><span className="avatar">{user.name.split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</span>{!collapsed&&<span><b>{user.name}</b><small>{title}</small></span>}<button onClick={()=>void logout().then(()=>navigate('/'))} aria-label="Sign out" title="Sign out"><LogOut size={16}/></button></div></div>
-    </aside>
+    {role==='shopper'&&<ShopperSidebar {...sidebarProps}/>}
+    {role==='merchant'&&<MerchantSidebar {...sidebarProps}/>}
+    {role==='inventory_manager'&&<InventoryManagerSidebar {...sidebarProps}/>}
+    {role==='operator'&&<OperatorSidebar {...sidebarProps}/>}
+    {role==='admin'&&<AdminSidebar {...sidebarProps}/>}
+
     <div className="dashboard-main">
       <header className="dashboard-topbar"><button className="dashboard-mobile-menu" onClick={()=>setMobile(true)} aria-label="Open navigation"><Menu/></button><button className="collapse-sidebar" onClick={()=>setCollapsed(v=>!v)} aria-label="Toggle sidebar">{collapsed?'»':'«'}</button><div className="breadcrumb"><span>{title}</span><b>/</b><strong>{navigation.find(n=>location.pathname===n.to)?.label??'Workspace'}</strong></div><div className="topbar-actions"><span className={`live-pill ${socketStatus==='connected'?'is-live':''}`} role="status"><i/> {socketStatus==='connected'?'Connected':socketStatus==='connecting'?'Connecting':'Reconnecting'}</span><span className="topbar-avatar">{user.name.slice(0,1).toUpperCase()}</span></div></header>
       <div className="dashboard-content">{children??<Outlet/>}</div>

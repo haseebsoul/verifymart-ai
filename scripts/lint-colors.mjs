@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 const roots = ['frontend/src'];
 const allowed = new Set(['#f9f9f6','#ffffff','#f2f2ed','#e4e4df','#cecec6','#116d4e','#0d573e','#ebf5f0','#b7dfd0','#181a18','#525854','#7a7f7b','#b45309','#b91c1c']);
-const forbiddenColorValue = /(?:^|[;{])\\s*(?:color|background(?:-color)?|border-color|outline-color|fill|stroke)\\s*:\\s*(?:black|white|gray|grey|zinc|slate)\\b/im;
+const forbiddenTokens = /(?:^|[;{,])\s*(?:color|background(?:Color|-color)?|border(?:Color|-color)?|fill|stroke)\s*:\s*["']?(?:black|white|gray|grey|zinc|slate)["']?(?=\s*[,;}])/im;
 const hex = /#[0-9a-fA-F]{3,8}\b/g;
 const errors = [];
 async function walk(dir) {
@@ -12,7 +12,7 @@ async function walk(dir) {
     else if (['.css','.tsx'].includes(extname(path))) {
       const source = await readFile(path, 'utf8');
       for (const match of source.matchAll(hex)) if (!allowed.has(match[0].toLowerCase())) errors.push(`${path}: disallowed color ${match[0]}`);
-      if (forbiddenColorValue.test(source)) errors.push(`${path}: forbidden named color value detected`);
+      if (forbiddenTokens.test(source)) errors.push(`${path}: forbidden color token name detected`);
     }
   }
 }
