@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import pino from 'pino';
-import { requestContext, errorHandler } from './middleware/http.js';
+import { asyncHandler, requestContext, errorHandler } from './middleware/http.js';
 import { checkAtlasReady } from './infrastructure/atlas.js';
 import { inspectExpectedAtlasIndexes } from './infrastructure/indexes.js';
 import { getAtlasDb } from './infrastructure/atlas.js';
@@ -75,12 +75,21 @@ app.use('/api', apiLimiter);
 let requestCount = 0;
 let errorCount = 0;
 let durationMsTotal = 0;
+const latencySamplesMs: number[] = [];
+
+function p95LatencyMs(): number {
+  if (latencySamplesMs.length === 0) return 0;
+  const sorted = [...latencySamplesMs].sort((a, b) => a - b);
+  return Number((sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0).toFixed(1));
+}
 app.use((req, res, next) => {
   const startedAt = process.hrtime.bigint();
   res.on('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
     requestCount += 1;
     durationMsTotal += durationMs;
+    latencySamplesMs.push(durationMs);
+    if (latencySamplesMs.length > 250) latencySamplesMs.shift();
     if (res.statusCode >= 500) errorCount += 1;
     logger.info({
       requestId: req.requestId,
@@ -93,9 +102,47 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'verifymart-api', persistence: 'mongodb-atlas' });
+app.get('/api/health', async (_req, res) => {
+  try {
+    await checkAtlasReady();
+    res.json({
+      status: 'ok',
+      service: 'verifymart-api',
+      database: 'ok',
+      persistence: 'mongodb-atlas',
+      p95LatencyMs: p95LatencyMs()
+    });
+  } catch {
+    res.status(503).json({
+      status: 'degraded',
+      service: 'verifymart-api',
+      database: 'unavailable',
+      persistence: 'mongodb-atlas'
+    });
+  }
 });
+
+app.get('/api/public/metrics', asyncHandler(async (_req, res) => {
+  const database = getAtlasDb();
+  const [products, signedBatchRecords, registeredSuppliers, orderRecords] = await Promise.all([
+    database.collection('products').countDocuments({ listingStatus: 'published' }),
+    database.collection('products').countDocuments({
+      batchHash: { $type: 'string' },
+      provenanceEvents: { $exists: true, $ne: [] }
+    }),
+    database.collection('merchants').countDocuments({}),
+    database.collection('orders').countDocuments({})
+  ]);
+  res.json({
+    api: {
+      status: 'ok',
+      p95LatencyMs: p95LatencyMs(),
+      requests: requestCount,
+      errors: errorCount
+    },
+    database: { products, signedBatchRecords, registeredSuppliers, orderRecords }
+  });
+}));
 
 app.get('/api/ready', async (_req, res) => {
   try {
