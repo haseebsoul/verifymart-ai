@@ -124,7 +124,7 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/public/metrics', asyncHandler(async (_req, res) => {
   const database = getAtlasDb();
-  const [products, signedBatchRecords, registeredSuppliers, orderRecords] = await Promise.all([
+  const [products, batchProvenanceRecords, registeredSuppliers, orderRecords] = await Promise.all([
     database.collection('products').countDocuments({ listingStatus: 'published' }),
     database.collection('products').countDocuments({
       batchHash: { $type: 'string' },
