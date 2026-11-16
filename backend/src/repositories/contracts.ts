@@ -105,6 +105,13 @@ export interface OrderDocument extends Document {
     dutyCents: Long;
     vatCents: Long;
     carrierFeeCents: Long;
+    additionalCustomsDutyCents?: Long;
+    regulatoryDutyCents?: Long;
+    federalExciseDutyCents?: Long;
+    withholdingTaxCents?: Long;
+    platformFeeCents?: Long;
+    exchangeRatePkrPerUsd?: number;
+    totalPkr?: number;
     totalCents: Long;
     source: 'seed-tariff-v1';
     formulaVersion: 'landed-cost-v1';

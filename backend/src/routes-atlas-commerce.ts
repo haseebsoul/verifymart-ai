@@ -8,7 +8,7 @@ import { appendAuditEvent } from './repositories/audit.js';
 import { createMongoCheckout } from './repositories/checkout.js';
 import type { OrderDocument, OrderState, ProductDocument } from './repositories/contracts.js';
 import { publishOrderEvent } from './realtime/order-events.js';
-import { calculateAtlasDuty } from './services/duty-atlas.js';
+import { calculateAtlasDuty, calculatePakistanDemoEstimate } from './services/duty-atlas.js';
 
 export const atlasCommerceRouter = Router();
 
@@ -17,7 +17,10 @@ const checkoutSchema = z.object({
   items: z.array(z.object({
     productId: z.string().min(1).max(100),
     quantity: z.number().int().min(1).max(100)
-  })).min(1).max(50)
+  })).min(1).max(50),
+  originCountry: z.string().trim().min(2).max(50).optional(),
+  destinationCity: z.string().trim().min(2).max(80).optional(),
+  taxProfile: z.enum(['filer','non-filer']).optional()
 }).strict();
 
 const checkoutLimiter = rateLimit({
@@ -40,7 +43,16 @@ atlasCommerceRouter.post(
       return;
     }
     const input = checkoutSchema.parse(req.body);
-    const quote = await calculateAtlasDuty(input.destinationCountry, input.items);
+    const quote = input.destinationCountry === 'PK'
+      ? await calculatePakistanDemoEstimate(input.items, {
+          originCountry: input.originCountry ?? 'Not specified',
+          destinationCity: input.destinationCity ?? 'Not specified',
+          taxProfile: input.taxProfile ?? 'filer'
+        })
+      : await calculateAtlasDuty(input.destinationCountry, input.items);
+    const demo = 'pakistanDemo' in quote ? quote.pakistanDemo : undefined;
+    const demoCents = (key: string) => Math.round(demo?.components.find(component => component.key === key)?.amountUsd ?? 0 * 100);
+    const cents = (value: number) => Math.round(value * 100);
     const result = await createMongoCheckout({
       idempotencyKey: key,
       userId: req.atlasPrincipal!.id,
@@ -50,8 +62,17 @@ atlasCommerceRouter.post(
         subtotalCents: Math.round(quote.subtotal * 100),
         dutyCents: Math.round(quote.duty * 100),
         vatCents: Math.round(quote.vat * 100),
-        carrierFeeCents: Math.round(quote.carrierFee * 100),
-        totalCents: Math.round(quote.total * 100)
+        carrierFeeCents: cents(quote.carrierFee),
+        ...(demo ? {
+          additionalCustomsDutyCents: cents(demo.components.find(c => c.key === 'additionalCustomsDuty')?.amountUsd ?? 0),
+          regulatoryDutyCents: cents(demo.components.find(c => c.key === 'regulatoryDuty')?.amountUsd ?? 0),
+          federalExciseDutyCents: cents(demo.components.find(c => c.key === 'federalExciseDuty')?.amountUsd ?? 0),
+          withholdingTaxCents: cents(demo.components.find(c => c.key === 'withholdingTax')?.amountUsd ?? 0),
+          platformFeeCents: cents(demo.components.find(c => c.key === 'platformFee')?.amountUsd ?? 0),
+          exchangeRatePkrPerUsd: demo.exchangeRatePkrPerUsd,
+          totalPkr: demo.totalPkr
+        } : {}),
+        totalCents: cents(quote.total)
       }
     });
     if (!result.idempotencyReplayed) {
@@ -111,6 +132,13 @@ atlasCommerceRouter.get(
           duty: order.quote.dutyCents.toNumber() / 100,
           vat: order.quote.vatCents.toNumber() / 100,
           carrierFee: order.quote.carrierFeeCents.toNumber() / 100,
+          additionalCustomsDuty: order.quote.additionalCustomsDutyCents?.toNumber() / 100 ?? 0,
+          regulatoryDuty: order.quote.regulatoryDutyCents?.toNumber() / 100 ?? 0,
+          federalExciseDuty: order.quote.federalExciseDutyCents?.toNumber() / 100 ?? 0,
+          withholdingTax: order.quote.withholdingTaxCents?.toNumber() / 100 ?? 0,
+          platformFee: order.quote.platformFeeCents?.toNumber() / 100 ?? 0,
+          exchangeRatePkrPerUsd: order.quote.exchangeRatePkrPerUsd ?? null,
+          totalPkr: order.quote.totalPkr ?? null,
           total: order.quote.totalCents.toNumber() / 100,
           state: order.state,
           holdReason: order.escrow.holdReason,

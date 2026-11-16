@@ -19,8 +19,24 @@ export function CartDrawer(){
     {receipt?<div className="receipt-state"><span className="receipt-icon"><Check size={28}/></span><span className="eyebrow">Escrow initialized · simulated</span><h3>Order secured.</h3><p>Your checkout created a held escrow record. No payment was collected.</p><div className="receipt-code"><span>{receipt}</span><button onClick={()=>void copy()} aria-label="Copy receipt"><Copy size={16}/></button></div><button className="button button-primary w-full" onClick={()=>{setReceipt('');setOpen(false);navigate(`/verify?query=${encodeURIComponent(receipt)}`);}}>Verify order <ArrowRight size={17}/></button></div>:items.length===0?<div className="cart-empty"><ShoppingBag size={36}/><h3>Your bag is empty</h3><p>Add a verified item to get an itemized landed-cost estimate.</p><Link className="button button-primary" to="/store" onClick={()=>setOpen(false)}>Explore catalog</Link></div>:<>
       <div className="cart-lines">{items.map(item=><div className="cart-line" key={item.product.id}><img src={item.product.imageUrl} alt=""/><div className="cart-line-info"><strong>{item.product.name}</strong><span>{item.product.sku} · {money(item.product.priceUsd)}</span><div className="quantity-control"><button onClick={()=>setQty(item.product.id,item.quantity-1)} aria-label="Decrease quantity"><Minus size={13}/></button><b>{item.quantity}</b><button onClick={()=>setQty(item.product.id,item.quantity+1)} aria-label="Increase quantity"><Plus size={13}/></button></div></div><button className="icon-button remove-line" onClick={()=>remove(item.product.id)} aria-label={`Remove ${item.product.name}`}><Trash2 size={16}/></button></div>)}</div>
       <div className="cart-calculation"><label htmlFor="destination">Delivery destination</label><select id="destination" value={destination} onChange={e=>setDestination(e.target.value as typeof destination)}>{DESTINATIONS.map(code=><option key={code} value={code}>{DESTINATION_NAMES[code]}</option>)}</select>
-        <div className="quote-list"><div><span>Product value</span><b>{quote?money(quote.subtotal):'—'}</b></div><div><span>Import duty</span><b>{quote?money(quote.duty):'—'}</b></div><div><span>VAT / tax</span><b>{quote?money(quote.vat):'—'}</b></div><div><span>Carrier fee</span><b>{quote?money(quote.carrierFee):'—'}</b></div><div className="quote-total"><span>Estimated landed total</span><b>{loadingQuote?'Calculating…':quote?money(quote.total):'—'}</b></div></div>
-        <p className="estimate-note">Estimate only · source: seed-tariff-v1 · rates are not legally authoritative.</p>
+        <div className="quote-list">
+          {quote?.pakistanDemo ? quote.pakistanDemo.components.map(component => (
+            <div key={component.key}>
+              <span>{component.label}<small className="cost-source-label">{component.basis === 'demo-placeholder' ? 'DEMO PLACEHOLDER' : 'ATLAS SEED ESTIMATE'}</small></span>
+              <b>{money(component.amountUsd)}<small>{new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(component.amountPkr)}</small></b>
+            </div>
+          )) : <>
+            <div><span>Product value</span><b>{quote?money(quote.subtotal):'—'}</b></div>
+            <div><span>Import duty</span><b>{quote?money(quote.duty):'—'}</b></div>
+            <div><span>VAT / tax</span><b>{quote?money(quote.vat):'—'}</b></div>
+            <div><span>Carrier fee</span><b>{quote?money(quote.carrierFee):'—'}</b></div>
+          </>}
+          <div className="quote-total">
+            <span>Estimated landed total {quote?.pakistanDemo && <small>DEMO FX: {quote.pakistanDemo.exchangeRatePkrPerUsd} PKR / USD</small>}</span>
+            <b>{loadingQuote?'Calculating…':quote?money(quote.total):'—'}{quote?.pakistanDemo && <small>{new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(quote.pakistanDemo.totalPkr)}</small>}</b>
+          </div>
+        </div>
+        <p className="estimate-note">{quote?.pakistanDemo ? quote.pakistanDemo.disclosure : 'Estimate only · source: seed-tariff-v1 · rates are not legally authoritative.'} No payment or funds transfer occurs.</p>
       </div>
       {error&&<p role="alert" className="form-error">{error}</p>}
       <div className="drawer-actions"><button className="button button-primary w-full" disabled={loadingQuote||!quote||quotedSignature!==signature||submitting} onClick={()=>void checkout()}>{submitting?'Securing order…':user?'Create simulated escrow':'Sign in to continue'} <ArrowRight size={17}/></button><button className="text-link" onClick={()=>setOpen(false)}>Continue shopping</button></div>
