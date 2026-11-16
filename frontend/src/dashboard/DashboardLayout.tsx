@@ -29,6 +29,7 @@ const merchantNav:NavItem[]=[
 const inventoryNav:NavItem[]=[
   {to:inventoryBase,label:'Inventory',icon:LayoutDashboard,end:true},
   {to:inventoryBase+'/hubs',label:'Hubs & stock map',icon:Globe2},
+  {to:inventoryBase+'/adjustments',label:'Adjustment ledger',icon:Activity},
   {to:inventoryBase+'/threats',label:'Threat visibility',icon:ShieldAlert},
   {to:inventoryBase+'/account',label:'Account',icon:Boxes}
 ];
@@ -46,6 +47,7 @@ const adminNav:NavItem[]=[
   {to:adminBase+'/users',label:'People & roles',icon:Users},
   {to:adminBase+'/merchants',label:'Supplier approvals',icon:ShieldCheck},
   {to:adminBase+'/inventory',label:'Listings & stock',icon:Boxes},
+  {to:adminBase+'/orders',label:'Escrow & orders',icon:WalletCards},
   {to:adminBase+'/tariffs',label:'Hubs & tariffs',icon:Globe2},
   {to:adminBase+'/activity',label:'Audit activity',icon:Activity},
   {to:adminBase+'/settings',label:'Workspace settings',icon:Settings}
