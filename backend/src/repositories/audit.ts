@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Filter } from 'mongodb';
-import { connectAuditLog } from '../infrastructure/atlas.js';
+import { connectAuditLog, connectAuditLogReader } from '../infrastructure/atlas.js';
 import type { AuditLogDocument } from './contracts.js';
 
 export interface AppendAuditInput {
@@ -29,7 +29,7 @@ export async function readAuditEvents(
   filter: Filter<AuditLogDocument> = {},
   limit = 100
 ): Promise<AuditLogDocument[]> {
-  const auditLog = await connectAuditLog();
+  const auditLog = await connectAuditLogReader();
   const safeLimit = Math.min(500, Math.max(1, Math.trunc(limit)));
   return auditLog.find(filter).sort({ at: -1 }).limit(safeLimit).toArray();
 }

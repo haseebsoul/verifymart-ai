@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import pino from 'pino';
 import { WebSocket, WebSocketServer } from 'ws';
 import { app } from './app-atlas.js';
-import { checkAtlasReady, closeAtlas, connectAtlas, connectAuditLog, getAtlasDb } from './infrastructure/atlas.js';
+import { checkAtlasReady, closeAtlas, connectAtlas, connectAuditLog, connectAuditLogReader, getAtlasDb } from './infrastructure/atlas.js';
 import type { HubDocument, MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
@@ -192,6 +192,7 @@ async function main(): Promise<void> {
   }
   await connectAtlas();
   await connectAuditLog();
+  await connectAuditLogReader();
   await checkAtlasReady();
   server.listen(port, host, () => {
     logger.info({ host, port, persistence: 'mongodb-atlas' }, 'VerifyMart Atlas API listening');
