@@ -218,8 +218,9 @@ function CostCalculator({ products }: { products: Product[] }) {
         </div>
       </div>
       <p className="cost-disclaimer">
-        This Atlas tariff version currently models catalog value, destination duty, VAT and carrier fees only.
-        Origin, city and filer status are shown as context; the unconfigured charges are not guessed. A sourced USD/PKR rate is not currently connected.
+        Selected context: origin {origin} · destination {city} · {filer === 'filer' ? 'Filer' : 'Non-filer'}.
+        This Atlas tariff version currently models catalog value, destination duty, VAT and carrier fees only; the origin, city and filer selections do not change the API quote yet.
+        Unconfigured charges are not guessed, and a sourced USD/PKR rate is not currently connected.
       </p>
     </div>
   );
