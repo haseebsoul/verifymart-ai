@@ -8,7 +8,7 @@ import { checkAtlasReady, closeAtlas, connectAtlas, connectAuditLog, getAtlasDb 
 import type { HubDocument, MerchantDocument, ProductDocument, UserDocument } from './repositories/contracts.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
-const port = Number(process.env.PORT ?? 8000);
+const port = Number(process.env.PORT ?? 5000);
 const host = process.env.HOST ?? '0.0.0.0';
 const maxConnections = 200;
 const server = createServer(app);
