@@ -80,8 +80,8 @@ async function seed():Promise<void> {
     const database=client.db(dbName);
     await database.command({ping:1});
     const existing = new Set(await database.listCollections({}, {nameOnly:true}).map(item=>item.name).toArray());
-    const required = ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger'];
-    const missing = required.filter(name=>!existing.has(name));
+    const requiredCollections = ['users','merchants','products','hubs','tariffRules','orders','threats','inventoryAdjustments','auditLog','settings','trustLedger'];
+    const missing = requiredCollections.filter(name=>!existing.has(name));
     if (missing.length) throw new Error('Atlas collections are not provisioned: '+missing.join(', '));
     const missingIndexes = await inspectExpectedAtlasIndexes(database);
     if (missingIndexes.length) throw new Error('Provisioned Atlas indexes are missing: ' + missingIndexes.join(', '));
