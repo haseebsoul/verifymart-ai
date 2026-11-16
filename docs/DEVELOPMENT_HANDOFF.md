@@ -106,7 +106,7 @@ Scope note: this exposes the existing shopper registration flow. It does not imp
 - `backend/src/routes-atlas-auth.ts` accepts the five Atlas roles. Shopper registration remains open; merchant registration requires business name and country and creates a pending `merchants` profile atomically with the `users` record.
 - `inventory_manager`, `operator` and `admin` registrations are gated by server-side keys. Configure `ADMIN_INVITE_KEY` for admin; configure `ROLE_INVITE_KEYS` as a JSON map for inventory manager/operator. No key is embedded in frontend code.
 - Login optionally validates `selectedRole` after the password is verified and returns a helpful `ROLE_MISMATCH` response without creating a session.
-- `POST /api/auth/demo-login` is development-only and checks the server-side `DEMO_PASSWORD` against seeded password hashes. It does not return or expose the password to the browser.
+- `POST /api/auth/demo-login` is development-only (`NODE_ENV=development`) and checks the server-side `DEMO_PASSWORD` against seeded password hashes. It does not return or expose the password to the browser.
 - The frontend role selector and demo evaluator panel are in `frontend/src/pages/LoginPage.tsx`; auth API integration is in `frontend/src/context/AuthContext.tsx`.
 - Default post-auth routes: admin `/dashboard/admin`, inventory manager `/dashboard/manage`, merchant/operator `/dashboard`, shopper `/store`.
 
