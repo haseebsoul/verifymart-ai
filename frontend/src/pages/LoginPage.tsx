@@ -95,7 +95,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const selected = roles.find(role => role.id === selectedRole) ?? roles[0];
+  const selected = roles.find(role => role.id === selectedRole) ?? roles[0]!;
   const needsInvite = selectedRole === 'inventory_manager' || selectedRole === 'operator' || selectedRole === 'admin';
 
   const finishSignIn = (user: PublicUser) => navigate(workspaceFor(user), { replace: true });

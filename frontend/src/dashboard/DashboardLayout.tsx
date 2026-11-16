@@ -83,7 +83,7 @@ function WorkspaceFrame({role,title,navigation,children}:{role:WorkspaceRole;tit
       <div className="dashboard-brand"><span className="brand-mark"><ShieldCheck size={20}/></span>{!collapsed&&<span>VerifyMart <i>AI</i></span>}<button className="sidebar-close" onClick={()=>setMobile(false)} aria-label="Close navigation"><X size={17}/></button></div>
       <div className="sidebar-label">{title.toUpperCase()}</div>
       <nav className="dashboard-nav">
-        {navigation.map(item=><NavLink key={item.to} to={item.to} end={item.end} onClick={()=>setMobile(false)} title={collapsed?item.label:undefined}><item.icon size={18}/><span>{item.label}</span></NavLink>)}
+        {navigation.map(item=><NavLink key={item.to} to={item.to} {...(item.end === undefined ? {} : {end:item.end})} onClick={()=>setMobile(false)} {...(collapsed ? {title:item.label} : {})}><item.icon size={18}/><span>{item.label}</span></NavLink>)}
         {role==='admin'&&<><div className="sidebar-label admin-label">GOVERNANCE</div><NavLink to={adminBase+'/users'} onClick={()=>setMobile(false)}><Users size={18}/><span>People & roles</span></NavLink></>}
       </nav>
       <div className="sidebar-bottom"><div className="sidebar-telemetry"><span className="pulse-dot"/>{!collapsed&&<span>Prototype / demo feed</span>}</div><div className="sidebar-user"><span className="avatar">{user.name.split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase()}</span>{!collapsed&&<span><b>{user.name}</b><small>{title}</small></span>}<button onClick={()=>void logout().then(()=>navigate('/'))} aria-label="Sign out" title="Sign out"><LogOut size={16}/></button></div></div>
